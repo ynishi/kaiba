@@ -1,0 +1,10 @@
+name = "kaiba"
+
+[build]
+# Shuttle project configuration
+
+[deploy]
+# Environment variables via Shuttle Secrets:
+# shuttle secrets set KAIBA_API_KEY="your-secret-key"
+# shuttle secrets set QDRANT_URL="https://your-qdrant-url"
+# shuttle secrets set QDRANT_API_KEY="your-qdrant-api-key"

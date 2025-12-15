@@ -1,0 +1,58 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/kaiba",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Yutaka Nishimura"]
+license = "MIT"
+
+[workspace.dependencies]
+# Shuttle
+shuttle-runtime = "0.50.0"
+shuttle-axum = "0.50.0"
+shuttle-shared-db = { version = "0.50.0", features = ["postgres", "sqlx"] }
+
+# Web framework
+axum = "0.7.7"
+tower = "0.5.1"
+tower-http = { version = "0.6.1", features = ["cors", "trace"] }
+
+# Async runtime
+tokio = { version = "1.41", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Qdrant vector database
+qdrant-client = "1.11"
+
+# Database (Shuttle Postgres)
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
+
+# Environment
+dotenvy = "0.15"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# UUID
+uuid = { version = "1.10", features = ["v4", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# LLM Toolkit
+llm-toolkit = { version = "0.58", features = ["agent"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"

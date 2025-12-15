@@ -1,0 +1,47 @@
+[package]
+name = "kaiba"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Shuttle
+shuttle-runtime = { workspace = true }
+shuttle-axum = { workspace = true }
+shuttle-shared-db = { workspace = true }
+
+# Web framework
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Async
+tokio = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Qdrant
+qdrant-client = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+reqwest = { workspace = true }
+
+# LLM Toolkit
+llm-toolkit = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
