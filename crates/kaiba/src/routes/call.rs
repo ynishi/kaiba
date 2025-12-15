@@ -1,4 +1,4 @@
-//! Call Routes - LLM Invocation
+//! Call Routes - LLM Invocation with RAG
 
 use axum::{
     extract::{Path, State},
@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::models::{
-    CallRequest, CallResponse, CallLog, MemoryReference,
+    CallRequest, CallResponse, CallLog, MemoryReference, Memory,
     Rei, ReiState, Tei,
 };
 
@@ -37,26 +37,28 @@ fn select_tei<'a>(energy_level: i32, teis: &'a [Tei]) -> Option<&'a Tei> {
     }
 }
 
-/// Call LLM with Rei context
+/// Call LLM with Rei context and RAG
 async fn call_llm(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<CallRequest>,
 ) -> Result<Json<CallResponse>, (axum::http::StatusCode, String)> {
+    let pool = &state.pool;
+
     // 1. Load Rei
     let rei = sqlx::query_as::<_, Rei>("SELECT * FROM reis WHERE id = $1")
         .bind(rei_id)
-        .fetch_optional(&pool)
+        .fetch_optional(pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string()))?;
 
     // 2. Load Rei state
-    let state = sqlx::query_as::<_, ReiState>(
+    let rei_state = sqlx::query_as::<_, ReiState>(
         "SELECT * FROM rei_states WHERE rei_id = $1"
     )
     .bind(rei_id)
-    .fetch_optional(&pool)
+    .fetch_optional(pool)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei state not found".to_string()))?;
@@ -73,7 +75,7 @@ async fn call_llm(
             "#,
         )
         .bind(rei_id)
-        .fetch_all(&pool)
+        .fetch_all(pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     } else {
@@ -82,7 +84,7 @@ async fn call_llm(
         for tei_id in &payload.tei_ids {
             if let Some(tei) = sqlx::query_as::<_, Tei>("SELECT * FROM teis WHERE id = $1")
                 .bind(tei_id)
-                .fetch_optional(&pool)
+                .fetch_optional(pool)
                 .await
                 .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
             {
@@ -100,34 +102,51 @@ async fn call_llm(
     }
 
     // 4. Select Tei based on energy
-    let selected_tei = select_tei(state.energy_level, &teis)
+    let selected_tei = select_tei(rei_state.energy_level, &teis)
         .ok_or((axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to select Tei".to_string()))?;
 
     tracing::info!(
         "Call for Rei {} using Tei {} ({}) - Energy: {}",
-        rei.name, selected_tei.name, selected_tei.model_id, state.energy_level
+        rei.name, selected_tei.name, selected_tei.model_id, rei_state.energy_level
     );
 
-    // 5. TODO: Combine expertise from all Teis
-    // let combined_expertise = combine_expertise(&teis);
+    // 5. RAG: Search relevant memories if requested
+    let context = payload.context.unwrap_or_default();
+    let (memories, memories_included) = if context.include_memories {
+        search_memories_for_rag(&state, &rei_id, &payload.message, context.memory_limit).await?
+    } else {
+        (vec![], vec![])
+    };
 
-    // 6. TODO: Search relevant memories from Qdrant (if requested)
-    let memories_included: Vec<MemoryReference> = vec![];
+    // 6. Build system prompt with Rei identity and memories
+    let system_prompt = build_system_prompt(&rei, &memories);
 
-    // 7. TODO: Build prompt with Rei identity, expertise, memories, and message
-    // let prompt = build_prompt(&rei, &combined_expertise, &memories, &payload.message);
+    // 7. TODO: Call LLM via llm-toolkit
+    // For now, return mock response showing RAG context
+    let memory_context = if memories.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\n\n[RAG Context - {} memories retrieved]\n{}",
+            memories.len(),
+            memories.iter()
+                .map(|m| format!("- {}", m.content))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    };
 
-    // 8. TODO: Call LLM via llm-toolkit
-    // For now, return mock response
     let response_text = format!(
-        "[Mock Response from {} via {}]\n\nReceived: {}\n\nThis is a placeholder response. LLM integration pending.",
+        "[Mock Response from {} via {}]{}\n\nReceived: {}\n\nSystem Prompt:\n{}\n\nThis is a placeholder response. LLM integration pending.",
         rei.name,
         selected_tei.model_id,
-        payload.message
+        memory_context,
+        payload.message,
+        system_prompt
     );
     let tokens_consumed = 100; // Mock
 
-    // 9. Update Rei state (consume tokens, update last_active)
+    // 8. Update Rei state (consume tokens, update last_active)
     sqlx::query(
         r#"
         UPDATE rei_states
@@ -137,11 +156,11 @@ async fn call_llm(
     )
     .bind(rei_id)
     .bind(tokens_consumed)
-    .execute(&pool)
+    .execute(pool)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // 10. Log the call
+    // 9. Log the call
     sqlx::query(
         r#"
         INSERT INTO call_logs (rei_id, tei_id, message, response, tokens_consumed, context)
@@ -153,8 +172,8 @@ async fn call_llm(
     .bind(&payload.message)
     .bind(&response_text)
     .bind(tokens_consumed)
-    .bind(serde_json::to_value(&payload.context).ok())
-    .execute(&pool)
+    .bind(serde_json::to_value(&context).ok())
+    .execute(pool)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -168,18 +187,103 @@ async fn call_llm(
 
 /// Get call history for a Rei
 async fn get_call_history(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
 ) -> Result<Json<Vec<CallLog>>, (axum::http::StatusCode, String)> {
     let logs = sqlx::query_as::<_, CallLog>(
         "SELECT * FROM call_logs WHERE rei_id = $1 ORDER BY created_at DESC LIMIT 100"
     )
     .bind(rei_id)
-    .fetch_all(&pool)
+    .fetch_all(&state.pool)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(logs))
+}
+
+// ============================================
+// RAG Helper Functions
+// ============================================
+
+/// Search memories for RAG context
+async fn search_memories_for_rag(
+    state: &AppState,
+    rei_id: &Uuid,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<(Vec<Memory>, Vec<MemoryReference>), (axum::http::StatusCode, String)> {
+    // Check if services are available
+    let memory_kai = match &state.memory_kai {
+        Some(kai) => kai,
+        None => return Ok((vec![], vec![])),
+    };
+
+    let embedding_service = match &state.embedding {
+        Some(svc) => svc,
+        None => return Ok((vec![], vec![])),
+    };
+
+    // Generate query embedding
+    let query_vector = embedding_service
+        .embed(query)
+        .await
+        .map_err(|e| {
+            tracing::warn!("Failed to generate embedding for RAG: {}", e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    // Search memories
+    let limit = limit.unwrap_or(5);
+    let memories = memory_kai
+        .search_memories(&rei_id.to_string(), query_vector, limit)
+        .await
+        .map_err(|e| {
+            tracing::warn!("Failed to search memories for RAG: {}", e);
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
+
+    // Build memory references (similarity scores would come from Qdrant)
+    let refs: Vec<MemoryReference> = memories
+        .iter()
+        .map(|m| MemoryReference {
+            id: m.id.clone(),
+            similarity: 0.0, // TODO: Get actual similarity from Qdrant
+        })
+        .collect();
+
+    tracing::info!("RAG: Retrieved {} memories for context", memories.len());
+
+    Ok((memories, refs))
+}
+
+/// Build system prompt with Rei identity and memories
+fn build_system_prompt(rei: &Rei, memories: &[Memory]) -> String {
+    let mut prompt = format!(
+        "You are {}, {}.\n",
+        rei.name,
+        rei.role
+    );
+
+    // Add manifest if present
+    if let Some(manifest) = rei.manifest.as_object() {
+        if let Some(personality) = manifest.get("personality") {
+            prompt.push_str(&format!("\nPersonality: {}\n", personality));
+        }
+        if let Some(instructions) = manifest.get("instructions") {
+            prompt.push_str(&format!("\nInstructions: {}\n", instructions));
+        }
+    }
+
+    // Add relevant memories as context
+    if !memories.is_empty() {
+        prompt.push_str("\n## Relevant Memories\n");
+        prompt.push_str("Use the following memories as context for your response:\n\n");
+        for mem in memories {
+            prompt.push_str(&format!("- [{}] {}\n", mem.memory_type, mem.content));
+        }
+    }
+
+    prompt
 }
 
 pub fn router() -> Router<AppState> {
