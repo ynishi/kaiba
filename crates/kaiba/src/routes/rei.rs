@@ -8,6 +8,7 @@ use axum::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::models::{
     CreateReiRequest, UpdateReiRequest, UpdateReiStateRequest,
     Rei, ReiState, ReiResponse, ReiStateResponse,
@@ -289,7 +290,7 @@ async fn update_rei_state(
     Ok(Json(state.into()))
 }
 
-pub fn router() -> Router<PgPool> {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/kaiba/rei", get(list_reis).post(create_rei))
         .route("/kaiba/rei/:id", get(get_rei).put(update_rei).delete(delete_rei))

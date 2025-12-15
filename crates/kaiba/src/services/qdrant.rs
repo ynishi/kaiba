@@ -4,12 +4,12 @@ use std::collections::HashMap;
 
 use crate::models::Memory;
 
-/// Qdrant client wrapper - Gateway to the Memory Ocean
-pub struct MemoryOcean {
+/// Qdrant client wrapper - Gateway to the Memory Sea (記憶海)
+pub struct MemoryKai {
     client: Qdrant,
 }
 
-impl MemoryOcean {
+impl MemoryKai {
     /// Initialize connection to Qdrant
     pub async fn new(url: &str, api_key: Option<String>) -> Result<Self, Box<dyn std::error::Error>> {
         let client = if let Some(key) = api_key {
@@ -18,7 +18,7 @@ impl MemoryOcean {
             Qdrant::from_url(url).build()?
         };
 
-        tracing::info!("🌊 Connected to Memory Ocean (Qdrant)");
+        tracing::info!("🌊 Connected to MemoryKai (記憶海)");
 
         Ok(Self { client })
     }
@@ -78,7 +78,7 @@ impl MemoryOcean {
             )
             .await?;
 
-        tracing::info!("💾 Memory stored in the ocean: {}", memory.id);
+        tracing::info!("💾 Memory stored in MemoryKai: {}", memory.id);
 
         Ok(())
     }
@@ -97,6 +97,7 @@ impl MemoryOcean {
             .client
             .search_points(
                 SearchPointsBuilder::new(&collection_name, query_vector, limit as u64)
+                    .with_payload(true)
             )
             .await?;
 
@@ -111,7 +112,7 @@ impl MemoryOcean {
             })
             .collect();
 
-        tracing::info!("🔍 Found {} memories in the ocean", memories.len());
+        tracing::info!("🔍 Found {} memories in MemoryKai", memories.len());
 
         Ok(memories)
     }

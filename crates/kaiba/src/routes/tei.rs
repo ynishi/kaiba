@@ -8,6 +8,7 @@ use axum::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::models::{
     CreateTeiRequest, UpdateTeiRequest, AssociateTeiRequest,
     Tei, TeiResponse, ReiTei,
@@ -265,7 +266,7 @@ async fn disassociate_tei(
     })))
 }
 
-pub fn router() -> Router<PgPool> {
+pub fn router() -> Router<AppState> {
     Router::new()
         // Tei CRUD
         .route("/kaiba/tei", get(list_teis).post(create_tei))

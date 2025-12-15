@@ -8,6 +8,7 @@ use axum::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::AppState;
 use crate::models::{
     CallRequest, CallResponse, CallLog, MemoryReference,
     Rei, ReiState, Tei,
@@ -181,7 +182,7 @@ async fn get_call_history(
     Ok(Json(logs))
 }
 
-pub fn router() -> Router<PgPool> {
+pub fn router() -> Router<AppState> {
     Router::new()
         .route("/kaiba/rei/:rei_id/call", post(call_llm))
         .route("/kaiba/rei/:rei_id/calls", axum::routing::get(get_call_history))
