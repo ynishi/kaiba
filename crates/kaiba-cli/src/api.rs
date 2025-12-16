@@ -39,6 +39,23 @@ pub struct MemoryResponse {
     pub importance: f32,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PromptResponse {
+    pub system_prompt: String,
+    pub format: String,
+    pub rei: ReiSummary,
+    pub memories_included: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReiSummary {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub role: String,
+    pub energy_level: i32,
+    pub mood: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct CreateMemoryRequest {
     pub content: String,
@@ -150,6 +167,50 @@ impl KaibaClient {
             .context("Failed to parse response")?;
 
         Ok(memory)
+    }
+
+    /// Get prompt for external Tei
+    pub async fn get_prompt(
+        &self,
+        rei_id: &str,
+        format: Option<&str>,
+        include_memories: bool,
+        context: Option<&str>,
+    ) -> Result<PromptResponse> {
+        let mut url = format!("{}/kaiba/rei/{}/prompt", self.base_url, rei_id);
+
+        // Build query params
+        let mut params = vec![];
+        if let Some(f) = format {
+            params.push(format!("format={}", f));
+        }
+        if include_memories {
+            params.push("include_memories=true".to_string());
+        }
+        if let Some(ctx) = context {
+            params.push(format!("context={}", urlencoding::encode(ctx)));
+        }
+        if !params.is_empty() {
+            url = format!("{}?{}", url, params.join("&"));
+        }
+
+        let resp = self.client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let prompt: PromptResponse = resp.json().await
+            .context("Failed to parse response")?;
+
+        Ok(prompt)
     }
 
     /// Search memories

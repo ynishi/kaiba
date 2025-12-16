@@ -50,6 +50,25 @@ enum Commands {
         action: MemoryAction,
     },
 
+    /// Get prompt for external Tei (Claude Code, Casting, etc.)
+    Prompt {
+        /// Output format: raw, claude-code, casting
+        #[arg(short, long, default_value = "raw")]
+        format: String,
+        /// Include memories in prompt
+        #[arg(short = 'm', long)]
+        include_memories: bool,
+        /// Context for memory search (defaults to Rei name)
+        #[arg(short, long)]
+        context: Option<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+        /// Show metadata (Rei info, memory count)
+        #[arg(long)]
+        verbose: bool,
+    },
+
     /// Show current configuration
     Config,
 }
@@ -128,6 +147,9 @@ async fn main() -> Result<()> {
         Commands::Profile { action } => cmd_profile(action).await,
         Commands::Rei { action } => cmd_rei(action).await,
         Commands::Memory { action } => cmd_memory(action).await,
+        Commands::Prompt { format, include_memories, context, profile, verbose } => {
+            cmd_prompt(format, include_memories, context, profile, verbose).await
+        }
         Commands::Config => cmd_config(),
     }
 }
@@ -374,6 +396,51 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             }
         }
     }
+
+    Ok(())
+}
+
+async fn cmd_prompt(
+    format: String,
+    include_memories: bool,
+    context: Option<String>,
+    profile: Option<String>,
+    verbose: bool,
+) -> Result<()> {
+    let config = Config::load()?;
+    let api_key = config.api_key.as_ref()
+        .context("Not logged in. Run 'kaiba login' first.")?;
+
+    let rei_id = config.get_rei_id(profile.as_deref())
+        .context("No profile specified and no default profile set. Use -p <profile> or set a default.")?;
+
+    let client = KaibaClient::new(&config.base_url, api_key);
+
+    let prompt_resp = client
+        .get_prompt(
+            &rei_id,
+            Some(&format),
+            include_memories,
+            context.as_deref(),
+        )
+        .await?;
+
+    if verbose {
+        // Show metadata to stderr so stdout is clean for piping
+        eprintln!(
+            "{} {} ({}) [{}%] - {} format, {} memories",
+            "Prompt for".dimmed(),
+            prompt_resp.rei.name.cyan(),
+            prompt_resp.rei.role.dimmed(),
+            prompt_resp.rei.energy_level,
+            prompt_resp.format.green(),
+            prompt_resp.memories_included
+        );
+        eprintln!("{}", "---".dimmed());
+    }
+
+    // Output the prompt to stdout (clean for piping)
+    println!("{}", prompt_resp.system_prompt);
 
     Ok(())
 }
