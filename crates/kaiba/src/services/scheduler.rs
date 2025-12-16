@@ -1,6 +1,7 @@
-//! Scheduler Service - Autonomous learning scheduler
+//! Scheduler Service - Autonomous learning & energy regeneration
 //!
 //! Runs self-learning for all Reis at configured intervals.
+//! Also handles energy regeneration based on each Rei's settings.
 
 use crate::services::embedding::EmbeddingService;
 use crate::services::qdrant::MemoryKai;
@@ -83,6 +84,14 @@ impl LearningScheduler {
         loop {
             ticker.tick().await;
 
+            // 1. Regenerate energy for all Reis
+            tracing::info!("⚡ Scheduler: Regenerating energy...");
+            match self.regenerate_all_energy().await {
+                Ok(count) => tracing::info!("⚡ Scheduler: Regenerated energy for {} Reis", count),
+                Err(e) => tracing::warn!("⚠️  Energy regeneration failed: {}", e),
+            }
+
+            // 2. Run learning cycle
             tracing::info!("🔄 Scheduler: Starting learning cycle...");
 
             let service = SelfLearningService::new(
@@ -121,6 +130,21 @@ impl LearningScheduler {
                 }
             }
         }
+    }
+
+    /// Regenerate energy for all Reis based on their energy_regen_per_hour setting
+    async fn regenerate_all_energy(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
+        let result = sqlx::query(
+            r#"
+            UPDATE rei_states
+            SET energy_level = LEAST(100, energy_level + energy_regen_per_hour)
+            WHERE energy_regen_per_hour > 0
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
     }
 }
 

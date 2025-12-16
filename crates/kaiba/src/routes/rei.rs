@@ -41,6 +41,7 @@ async fn list_reis(
                 token_budget: 100000,
                 tokens_used: 0,
                 last_active_at: None,
+                energy_regen_per_hour: 10,
             });
 
         responses.push(ReiResponse {
@@ -136,6 +137,7 @@ async fn get_rei(
             token_budget: 100000,
             tokens_used: 0,
             last_active_at: None,
+            energy_regen_per_hour: 10,
         });
 
     Ok(Json(ReiResponse {
@@ -198,6 +200,7 @@ async fn update_rei(
             token_budget: 100000,
             tokens_used: 0,
             last_active_at: None,
+            energy_regen_per_hour: 10,
         });
 
     Ok(Json(ReiResponse {
@@ -273,7 +276,7 @@ async fn update_rei_state(
         r#"
         UPDATE rei_states
         SET energy_level = $2, mood = $3, token_budget = $4, tokens_used = $5,
-            last_active_at = NOW()
+            energy_regen_per_hour = $6, last_active_at = NOW()
         WHERE rei_id = $1
         RETURNING *
         "#,
@@ -283,6 +286,7 @@ async fn update_rei_state(
     .bind(payload.mood.unwrap_or(current.mood))
     .bind(payload.token_budget.unwrap_or(current.token_budget))
     .bind(payload.tokens_used.unwrap_or(current.tokens_used))
+    .bind(payload.energy_regen_per_hour.unwrap_or(current.energy_regen_per_hour))
     .fetch_one(&pool)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;

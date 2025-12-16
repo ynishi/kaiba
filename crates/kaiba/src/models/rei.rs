@@ -28,6 +28,8 @@ pub struct ReiState {
     pub mood: String,
     pub last_active_at: Option<DateTime<Utc>>,
     pub updated_at: DateTime<Utc>,
+    /// Energy regeneration per hour (0 = disabled)
+    pub energy_regen_per_hour: i32,
 }
 
 // ============================================
@@ -73,6 +75,7 @@ pub struct ReiStateResponse {
     pub token_budget: i32,
     pub tokens_used: i32,
     pub last_active_at: Option<DateTime<Utc>>,
+    pub energy_regen_per_hour: i32,
 }
 
 /// Update Rei state request
@@ -82,6 +85,7 @@ pub struct UpdateReiStateRequest {
     pub mood: Option<String>,
     pub token_budget: Option<i32>,
     pub tokens_used: Option<i32>,
+    pub energy_regen_per_hour: Option<i32>,
 }
 
 impl From<ReiState> for ReiStateResponse {
@@ -92,6 +96,7 @@ impl From<ReiState> for ReiStateResponse {
             token_budget: state.token_budget,
             tokens_used: state.tokens_used,
             last_active_at: state.last_active_at,
+            energy_regen_per_hour: state.energy_regen_per_hour,
         }
     }
 }
