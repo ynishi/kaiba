@@ -70,6 +70,8 @@ impl DigestService {
             content: summary.clone(),
             memory_type: MemoryType::Expertise,
             importance: 0.9, // High importance for digested knowledge
+            tags: vec!["digest".to_string(), "auto_generated".to_string()],
+            metadata: None,
             created_at: chrono::Utc::now(),
         };
 

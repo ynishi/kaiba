@@ -36,6 +36,12 @@ pub struct Memory {
     pub content: String,
     pub memory_type: MemoryType,
     pub importance: f32,
+    /// Custom tags for flexible categorization (e.g., ["code_knowledge", "rust", "orcs"])
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Extensible metadata for project-specific data
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -50,6 +56,12 @@ pub struct CreateMemoryRequest {
     #[serde(default)]
     pub memory_type: MemoryType,
     pub importance: Option<f32>,
+    /// Custom tags for flexible categorization
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Extensible metadata for project-specific data
+    #[serde(default)]
+    pub metadata: Option<serde_json::Value>,
 }
 
 /// Search memories request
@@ -67,6 +79,10 @@ pub struct MemoryResponse {
     pub content: String,
     pub memory_type: MemoryType,
     pub importance: f32,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
     pub similarity: Option<f32>,
     pub created_at: DateTime<Utc>,
 }
@@ -78,6 +94,8 @@ impl From<Memory> for MemoryResponse {
             content: mem.content,
             memory_type: mem.memory_type,
             importance: mem.importance,
+            tags: mem.tags,
+            metadata: mem.metadata,
             similarity: None,
             created_at: mem.created_at,
         }
