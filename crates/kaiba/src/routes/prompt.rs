@@ -164,23 +164,26 @@ Your role is to:
         }
     }
 
-    // Add memory saving instructions
-    prompt.push_str(&format!(
+    // Add memory management instructions
+    prompt.push_str(
         r#"
 ## Memory Management
-If the `kaiba` CLI is available, you can save important learnings or reflections:
+If the `kaiba` CLI is available, you can access your memories:
+
+**Search memories** (not all memories are in this prompt):
+```bash
+kaiba memory search "<query>"
+```
+
+**Save new memories**:
 ```bash
 kaiba memory add -t <type> "<content>"
 ```
-Types: conversation, learning, fact, expertise, reflection
+Types: learning, fact, expertise, reflection
 
-Use this to remember:
-- New knowledge or insights (learning)
-- Important facts discovered (fact)
-- Technical expertise gained (expertise)
-- Personal reflections or considerations (reflection)
-"#
-    ));
+Use search to recall past conversations, projects, or learnings that aren't in the initial context.
+"#,
+    );
 
     prompt
 }
@@ -216,11 +219,12 @@ Current state: {mood} (Energy: {energy}%)
         }
     }
 
-    // Add memory saving instructions
+    // Add memory management instructions
     prompt.push_str(
         r#"
 ## Memory
-Save learnings with: `kaiba memory add -t <type> "<content>"`
+- Search: `kaiba memory search "<query>"` (not all memories are in this prompt)
+- Save: `kaiba memory add -t <type> "<content>"`
 Types: learning, fact, expertise, reflection
 "#,
     );
