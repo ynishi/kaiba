@@ -17,8 +17,50 @@ use crate::models::{
     PromptFormat, PromptResponse, ReiSummary,
 };
 
+use crate::services::web_search::WebSearchReference;
+use crate::services::self_learning::LearningSession;
+
+// Local route types
+use super::search::{SearchRequest, SearchResult};
+use super::learning::{LearnRequest, LearnResponse, BatchLearnResponse, RechargeRequest, RechargeResponse};
+
 #[derive(OpenApi)]
 #[openapi(
+    paths(
+        // Rei endpoints
+        super::rei::list_reis,
+        super::rei::create_rei,
+        super::rei::get_rei,
+        super::rei::update_rei,
+        super::rei::delete_rei,
+        super::rei::get_rei_state,
+        super::rei::update_rei_state,
+        // Tei endpoints
+        super::tei::list_teis,
+        super::tei::create_tei,
+        super::tei::get_tei,
+        super::tei::update_tei,
+        super::tei::delete_tei,
+        super::tei::get_tei_expertise,
+        super::tei::update_tei_expertise,
+        super::tei::list_rei_teis,
+        super::tei::associate_tei,
+        super::tei::disassociate_tei,
+        // Memory endpoints
+        super::memory::add_memory,
+        super::memory::search_memories,
+        // Call endpoints
+        super::call::call_llm,
+        super::call::get_call_history,
+        // Prompt endpoints
+        super::prompt::generate_prompt,
+        // Search endpoints
+        super::search::web_search,
+        // Learning endpoints
+        super::learning::learn_rei,
+        super::learning::learn_all,
+        super::learning::recharge_rei,
+    ),
     info(
         title = "Kaiba API",
         version = "0.1.0",
@@ -72,6 +114,17 @@ use crate::models::{
             PromptFormat,
             PromptResponse,
             ReiSummary,
+            // Search
+            SearchRequest,
+            SearchResult,
+            WebSearchReference,
+            // Learning
+            LearnRequest,
+            LearnResponse,
+            BatchLearnResponse,
+            RechargeRequest,
+            RechargeResponse,
+            LearningSession,
         )
     ),
 )]

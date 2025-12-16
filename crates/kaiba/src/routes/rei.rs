@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, State},
-    routing::{get, post, put, delete},
+    routing::get,
     Json, Router,
 };
 use sqlx::PgPool;
@@ -15,7 +15,16 @@ use crate::models::{
 };
 
 /// List all Reis
-async fn list_reis(
+#[utoipa::path(
+    get,
+    path = "/kaiba/rei",
+    responses(
+        (status = 200, description = "List of all Reis", body = Vec<ReiResponse>),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Rei"
+)]
+pub async fn list_reis(
     State(pool): State<PgPool>,
 ) -> Result<Json<Vec<ReiResponse>>, (axum::http::StatusCode, String)> {
     let reis = sqlx::query_as::<_, Rei>("SELECT * FROM reis ORDER BY created_at DESC")
@@ -60,7 +69,17 @@ async fn list_reis(
 }
 
 /// Create new Rei
-async fn create_rei(
+#[utoipa::path(
+    post,
+    path = "/kaiba/rei",
+    request_body = CreateReiRequest,
+    responses(
+        (status = 200, description = "Rei created successfully", body = ReiResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Rei"
+)]
+pub async fn create_rei(
     State(pool): State<PgPool>,
     Json(payload): Json<CreateReiRequest>,
 ) -> Result<Json<ReiResponse>, (axum::http::StatusCode, String)> {
@@ -110,7 +129,20 @@ async fn create_rei(
 }
 
 /// Get Rei by ID
-async fn get_rei(
+#[utoipa::path(
+    get,
+    path = "/kaiba/rei/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Rei ID")
+    ),
+    responses(
+        (status = 200, description = "Rei found", body = ReiResponse),
+        (status = 404, description = "Rei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Rei"
+)]
+pub async fn get_rei(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ReiResponse>, (axum::http::StatusCode, String)> {
@@ -153,7 +185,21 @@ async fn get_rei(
 }
 
 /// Update Rei
-async fn update_rei(
+#[utoipa::path(
+    put,
+    path = "/kaiba/rei/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Rei ID")
+    ),
+    request_body = UpdateReiRequest,
+    responses(
+        (status = 200, description = "Rei updated successfully", body = ReiResponse),
+        (status = 404, description = "Rei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Rei"
+)]
+pub async fn update_rei(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateReiRequest>,
@@ -216,7 +262,20 @@ async fn update_rei(
 }
 
 /// Delete Rei
-async fn delete_rei(
+#[utoipa::path(
+    delete,
+    path = "/kaiba/rei/{id}",
+    params(
+        ("id" = Uuid, Path, description = "Rei ID")
+    ),
+    responses(
+        (status = 200, description = "Rei deleted successfully"),
+        (status = 404, description = "Rei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Rei"
+)]
+pub async fn delete_rei(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
@@ -239,7 +298,20 @@ async fn delete_rei(
 }
 
 /// Get Rei state
-async fn get_rei_state(
+#[utoipa::path(
+    get,
+    path = "/kaiba/rei/{id}/state",
+    params(
+        ("id" = Uuid, Path, description = "Rei ID")
+    ),
+    responses(
+        (status = 200, description = "Rei state found", body = ReiStateResponse),
+        (status = 404, description = "Rei state not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Rei"
+)]
+pub async fn get_rei_state(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ReiStateResponse>, (axum::http::StatusCode, String)> {
@@ -256,7 +328,21 @@ async fn get_rei_state(
 }
 
 /// Update Rei state
-async fn update_rei_state(
+#[utoipa::path(
+    put,
+    path = "/kaiba/rei/{id}/state",
+    params(
+        ("id" = Uuid, Path, description = "Rei ID")
+    ),
+    request_body = UpdateReiStateRequest,
+    responses(
+        (status = 200, description = "Rei state updated", body = ReiStateResponse),
+        (status = 404, description = "Rei state not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Rei"
+)]
+pub async fn update_rei_state(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateReiStateRequest>,

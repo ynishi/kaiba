@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, State},
-    routing::{get, post},
+    routing::post,
     Json, Router,
 };
 use chrono::Utc;
@@ -12,7 +12,19 @@ use crate::models::{CreateMemoryRequest, Memory, MemoryResponse, SearchMemoriesR
 use crate::AppState;
 
 /// Add a memory to MemoryKai
-async fn add_memory(
+#[utoipa::path(
+    post,
+    path = "/kaiba/rei/{rei_id}/memories",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    request_body = CreateMemoryRequest,
+    responses(
+        (status = 200, description = "Memory added", body = MemoryResponse),
+        (status = 503, description = "MemoryKai or Embedding service unavailable"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Memory"
+)]
+pub async fn add_memory(
     State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<CreateMemoryRequest>,
@@ -51,7 +63,19 @@ async fn add_memory(
 }
 
 /// Search memories in MemoryKai
-async fn search_memories(
+#[utoipa::path(
+    post,
+    path = "/kaiba/rei/{rei_id}/memories/search",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    request_body = SearchMemoriesRequest,
+    responses(
+        (status = 200, description = "Matching memories", body = Vec<MemoryResponse>),
+        (status = 503, description = "MemoryKai or Embedding service unavailable"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Memory"
+)]
+pub async fn search_memories(
     State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<SearchMemoriesRequest>,

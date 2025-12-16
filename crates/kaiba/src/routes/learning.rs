@@ -11,13 +11,14 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::services::self_learning::{LearningConfig, LearningSession, SelfLearningService};
 use crate::AppState;
 
 /// Learning request (optional config override)
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct LearnRequest {
     pub max_queries: Option<usize>,
     /// Force learning even if energy is low
@@ -26,7 +27,7 @@ pub struct LearnRequest {
 }
 
 /// Learning response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct LearnResponse {
     pub success: bool,
     pub session: Option<LearningSession>,
@@ -34,7 +35,7 @@ pub struct LearnResponse {
 }
 
 /// Batch learning response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct BatchLearnResponse {
     pub total: usize,
     pub successful: usize,
@@ -43,7 +44,19 @@ pub struct BatchLearnResponse {
 }
 
 /// Trigger learning for a specific Rei
-async fn learn_rei(
+#[utoipa::path(
+    post,
+    path = "/kaiba/rei/{rei_id}/learn",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    request_body = Option<LearnRequest>,
+    responses(
+        (status = 200, description = "Learning result", body = LearnResponse),
+        (status = 503, description = "Required services unavailable"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Learning"
+)]
+pub async fn learn_rei(
     State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<Option<LearnRequest>>,
@@ -105,7 +118,17 @@ async fn learn_rei(
 }
 
 /// Trigger learning for all Reis
-async fn learn_all(
+#[utoipa::path(
+    post,
+    path = "/kaiba/learn/all",
+    responses(
+        (status = 200, description = "Batch learning results", body = BatchLearnResponse),
+        (status = 503, description = "Required services unavailable"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Learning"
+)]
+pub async fn learn_all(
     State(state): State<AppState>,
 ) -> Result<Json<BatchLearnResponse>, (axum::http::StatusCode, String)> {
     // Check required services
@@ -174,14 +197,14 @@ async fn learn_all(
 }
 
 /// Recharge request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct RechargeRequest {
     /// Energy to add (can be negative to drain)
     pub energy: i32,
 }
 
 /// Recharge response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct RechargeResponse {
     pub rei_id: Uuid,
     pub previous_energy: i32,
@@ -197,7 +220,19 @@ struct EnergyUpdate {
 }
 
 /// Manually recharge Rei's energy
-async fn recharge_rei(
+#[utoipa::path(
+    post,
+    path = "/kaiba/rei/{rei_id}/recharge",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    request_body = RechargeRequest,
+    responses(
+        (status = 200, description = "Recharge result", body = RechargeResponse),
+        (status = 404, description = "Rei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Learning"
+)]
+pub async fn recharge_rei(
     State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<RechargeRequest>,

@@ -18,7 +18,22 @@ use crate::models::{
 /// Generate prompt for external Tei
 ///
 /// GET /kaiba/rei/{id}/prompt?format=casting&include_memories=true&context=...
-async fn generate_prompt(
+#[utoipa::path(
+    get,
+    path = "/kaiba/rei/{rei_id}/prompt",
+    params(
+        ("rei_id" = Uuid, Path, description = "Rei ID"),
+        PromptQuery
+    ),
+    responses(
+        (status = 200, description = "Generated prompt", body = PromptResponse),
+        (status = 404, description = "Rei not found"),
+        (status = 400, description = "Invalid format"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Prompt"
+)]
+pub async fn generate_prompt(
     State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Query(query): Query<PromptQuery>,

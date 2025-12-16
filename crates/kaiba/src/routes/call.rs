@@ -5,7 +5,6 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -38,7 +37,20 @@ fn select_tei<'a>(energy_level: i32, teis: &'a [Tei]) -> Option<&'a Tei> {
 }
 
 /// Call LLM with Rei context and RAG
-async fn call_llm(
+#[utoipa::path(
+    post,
+    path = "/kaiba/rei/{rei_id}/call",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    request_body = CallRequest,
+    responses(
+        (status = 200, description = "LLM call successful", body = CallResponse),
+        (status = 404, description = "Rei not found"),
+        (status = 400, description = "No Teis available"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Call"
+)]
+pub async fn call_llm(
     State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<CallRequest>,
@@ -186,7 +198,17 @@ async fn call_llm(
 }
 
 /// Get call history for a Rei
-async fn get_call_history(
+#[utoipa::path(
+    get,
+    path = "/kaiba/rei/{rei_id}/calls",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    responses(
+        (status = 200, description = "Call history", body = Vec<CallLog>),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Call"
+)]
+pub async fn get_call_history(
     State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
 ) -> Result<Json<Vec<CallLog>>, (axum::http::StatusCode, String)> {

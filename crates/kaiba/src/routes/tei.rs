@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{Path, State},
-    routing::{get, post, put, delete},
+    routing::{delete, get},
     Json, Router,
 };
 use sqlx::PgPool;
@@ -11,11 +11,20 @@ use uuid::Uuid;
 use crate::AppState;
 use crate::models::{
     CreateTeiRequest, UpdateTeiRequest, AssociateTeiRequest,
-    Tei, TeiResponse, ReiTei,
+    Tei, TeiResponse,
 };
 
 /// List all Teis
-async fn list_teis(
+#[utoipa::path(
+    get,
+    path = "/kaiba/tei",
+    responses(
+        (status = 200, description = "List of all Teis", body = Vec<TeiResponse>),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn list_teis(
     State(pool): State<PgPool>,
 ) -> Result<Json<Vec<TeiResponse>>, (axum::http::StatusCode, String)> {
     let teis = sqlx::query_as::<_, Tei>("SELECT * FROM teis ORDER BY priority, created_at DESC")
@@ -27,7 +36,17 @@ async fn list_teis(
 }
 
 /// Create new Tei
-async fn create_tei(
+#[utoipa::path(
+    post,
+    path = "/kaiba/tei",
+    request_body = CreateTeiRequest,
+    responses(
+        (status = 200, description = "Tei created", body = TeiResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn create_tei(
     State(pool): State<PgPool>,
     Json(payload): Json<CreateTeiRequest>,
 ) -> Result<Json<TeiResponse>, (axum::http::StatusCode, String)> {
@@ -57,7 +76,18 @@ async fn create_tei(
 }
 
 /// Get Tei by ID
-async fn get_tei(
+#[utoipa::path(
+    get,
+    path = "/kaiba/tei/{id}",
+    params(("id" = Uuid, Path, description = "Tei ID")),
+    responses(
+        (status = 200, description = "Tei found", body = TeiResponse),
+        (status = 404, description = "Tei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn get_tei(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<TeiResponse>, (axum::http::StatusCode, String)> {
@@ -72,7 +102,19 @@ async fn get_tei(
 }
 
 /// Update Tei
-async fn update_tei(
+#[utoipa::path(
+    put,
+    path = "/kaiba/tei/{id}",
+    params(("id" = Uuid, Path, description = "Tei ID")),
+    request_body = UpdateTeiRequest,
+    responses(
+        (status = 200, description = "Tei updated", body = TeiResponse),
+        (status = 404, description = "Tei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn update_tei(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateTeiRequest>,
@@ -110,7 +152,18 @@ async fn update_tei(
 }
 
 /// Delete Tei
-async fn delete_tei(
+#[utoipa::path(
+    delete,
+    path = "/kaiba/tei/{id}",
+    params(("id" = Uuid, Path, description = "Tei ID")),
+    responses(
+        (status = 200, description = "Tei deleted"),
+        (status = 404, description = "Tei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn delete_tei(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
@@ -133,7 +186,18 @@ async fn delete_tei(
 }
 
 /// Get Tei expertise
-async fn get_tei_expertise(
+#[utoipa::path(
+    get,
+    path = "/kaiba/tei/{id}/expertise",
+    params(("id" = Uuid, Path, description = "Tei ID")),
+    responses(
+        (status = 200, description = "Tei expertise"),
+        (status = 404, description = "Tei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn get_tei_expertise(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
@@ -148,7 +212,18 @@ async fn get_tei_expertise(
 }
 
 /// Update Tei expertise
-async fn update_tei_expertise(
+#[utoipa::path(
+    put,
+    path = "/kaiba/tei/{id}/expertise",
+    params(("id" = Uuid, Path, description = "Tei ID")),
+    responses(
+        (status = 200, description = "Expertise updated"),
+        (status = 404, description = "Tei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn update_tei_expertise(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
     Json(expertise): Json<serde_json::Value>,
@@ -174,7 +249,17 @@ async fn update_tei_expertise(
 // ============================================
 
 /// List Teis associated with a Rei
-async fn list_rei_teis(
+#[utoipa::path(
+    get,
+    path = "/kaiba/rei/{rei_id}/teis",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    responses(
+        (status = 200, description = "List of associated Teis", body = Vec<TeiResponse>),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn list_rei_teis(
     State(pool): State<PgPool>,
     Path(rei_id): Path<Uuid>,
 ) -> Result<Json<Vec<TeiResponse>>, (axum::http::StatusCode, String)> {
@@ -195,7 +280,19 @@ async fn list_rei_teis(
 }
 
 /// Associate Tei with Rei
-async fn associate_tei(
+#[utoipa::path(
+    post,
+    path = "/kaiba/rei/{rei_id}/teis",
+    params(("rei_id" = Uuid, Path, description = "Rei ID")),
+    request_body = AssociateTeiRequest,
+    responses(
+        (status = 200, description = "Tei associated"),
+        (status = 404, description = "Rei or Tei not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn associate_tei(
     State(pool): State<PgPool>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<AssociateTeiRequest>,
@@ -245,7 +342,21 @@ async fn associate_tei(
 }
 
 /// Disassociate Tei from Rei
-async fn disassociate_tei(
+#[utoipa::path(
+    delete,
+    path = "/kaiba/rei/{rei_id}/teis/{tei_id}",
+    params(
+        ("rei_id" = Uuid, Path, description = "Rei ID"),
+        ("tei_id" = Uuid, Path, description = "Tei ID")
+    ),
+    responses(
+        (status = 200, description = "Tei disassociated"),
+        (status = 404, description = "Association not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Tei"
+)]
+pub async fn disassociate_tei(
     State(pool): State<PgPool>,
     Path((rei_id, tei_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {

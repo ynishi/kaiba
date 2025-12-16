@@ -13,10 +13,11 @@ use crate::services::web_search::{WebSearchAgent, WebSearchResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::sync::Arc;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Learning session result
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LearningSession {
     pub rei_id: Uuid,
     pub rei_name: String,

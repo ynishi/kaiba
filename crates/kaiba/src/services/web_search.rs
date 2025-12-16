@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::time::Duration;
+use utoipa::ToSchema;
 
 const BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL: &str = "gemini-2.0-flash";
@@ -129,7 +130,7 @@ struct Tool {
 struct GoogleSearchConfig {}
 
 /// Structured reference returned by Gemini's grounding metadata.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct WebSearchReference {
     pub title: String,
     pub url: String,

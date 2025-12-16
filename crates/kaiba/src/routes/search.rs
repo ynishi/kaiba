@@ -6,18 +6,19 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::AppState;
 use crate::services::web_search::{WebSearchResponse, WebSearchReference};
 
 /// Search request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SearchRequest {
     pub query: String,
 }
 
 /// Search response (simplified)
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct SearchResult {
     pub query: String,
     pub answer: String,
@@ -35,7 +36,18 @@ impl From<WebSearchResponse> for SearchResult {
 }
 
 /// Execute web search
-async fn web_search(
+#[utoipa::path(
+    post,
+    path = "/kaiba/search",
+    request_body = SearchRequest,
+    responses(
+        (status = 200, description = "Search results", body = SearchResult),
+        (status = 503, description = "WebSearch not available"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "Search"
+)]
+pub async fn web_search(
     State(state): State<AppState>,
     Json(payload): Json<SearchRequest>,
 ) -> Result<Json<SearchResult>, (axum::http::StatusCode, String)> {
