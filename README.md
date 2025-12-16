@@ -225,6 +225,70 @@ Following Mark Weiser's principles:
 - Simple interfaces: REST API with predictable endpoints
 - Composability: Personas can be integrated into any platform
 
+## Using Claude Code as Tei
+
+Kaiba doesn't wrap LLMs—it generates prompts that any execution environment can use.
+This means you can use **Claude Code** (or any LLM CLI) as your Tei.
+
+### Prompt Generation Endpoint
+
+```bash
+GET /kaiba/rei/{id}/prompt?format={format}
+```
+
+**Parameters:**
+- `format` - Output format: `casting`, `claude-code`, `raw` (default: `raw`)
+- `include_memories` - Include RAG memories (default: `true`)
+- `memory_limit` - Max memories to include (default: `5`)
+- `context` - Query for memory search (default: Rei's name)
+
+**Response:**
+```json
+{
+  "system_prompt": "You are しーちゃん, Senior Coding Assistant...",
+  "format": "claude-code",
+  "rei": {
+    "id": "cd4efdf2-...",
+    "name": "しーちゃん",
+    "role": "Senior Coding Assistant",
+    "energy_level": 85,
+    "mood": "focused"
+  },
+  "memories_included": 5
+}
+```
+
+### Example: Claude Code with Kaiba Persona
+
+```bash
+# Fetch Rei's prompt and pipe to Claude Code
+claude --system-prompt "$(
+  curl -s -H "Authorization: Bearer $KAIBA_API_KEY" \
+    "$KAIBA_URL/kaiba/rei/$REI_ID/prompt?format=claude-code" \
+  | jq -r '.system_prompt'
+)"
+```
+
+Or as a shell function:
+
+```bash
+# Add to your .zshrc / .bashrc
+kaiba-claude() {
+  local rei_id="${1:-$KAIBA_DEFAULT_REI}"
+  claude --system-prompt "$(
+    curl -s -H "Authorization: Bearer $KAIBA_API_KEY" \
+      "$KAIBA_URL/kaiba/rei/$rei_id/prompt?format=claude-code" \
+    | jq -r '.system_prompt'
+  )"
+}
+
+# Usage
+kaiba-claude cd4efdf2-be22-41ec-9238-227f5ccb1523
+```
+
+This pattern keeps Kaiba focused on **identity and memory**, while letting you choose
+any LLM or execution environment as the Tei.
+
 ## Roadmap
 
 - [x] Basic API structure (Axum + Shuttle)
@@ -236,7 +300,7 @@ Following Mark Weiser's principles:
 - [x] Autonomous learning from interests
 - [x] Decision system (Learn/Digest/Rest)
 - [x] Energy regeneration
-- [ ] LLM provider integration (currently mock)
+- [x] Prompt endpoint for external Tei (Claude Code, Casting, etc.)
 - [ ] Web UI (optional, later)
 
 ## Contributing
