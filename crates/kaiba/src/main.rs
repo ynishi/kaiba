@@ -9,6 +9,8 @@ use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
 use tower_http::cors::CorsLayer;
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 mod auth;
 mod models;
@@ -152,13 +154,18 @@ async fn main(
         .merge(routes::prompt::router())
         .layer(middleware::from_fn(auth::auth_middleware));
 
+    // OpenAPI documentation
+    let openapi = routes::swagger::ApiDoc::openapi();
+
     // Build router with shared state
     let router = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi))
         .route("/health", get(health_check))
         .merge(protected_routes)
         .layer(CorsLayer::permissive())
         .with_state(state);
 
+    tracing::info!("📚 Swagger UI: /swagger-ui");
     tracing::info!("✅ Kaiba API ready - Rei awakens in Tei");
 
     Ok(router.into())

@@ -2,9 +2,10 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 /// Memory type
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum MemoryType {
     #[default]
@@ -26,7 +27,7 @@ impl std::fmt::Display for MemoryType {
 }
 
 /// Memory entry (stored in Qdrant)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Memory {
     pub id: String,
     pub rei_id: String,
@@ -41,7 +42,7 @@ pub struct Memory {
 // ============================================
 
 /// Create memory request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMemoryRequest {
     pub content: String,
     #[serde(default)]
@@ -50,7 +51,7 @@ pub struct CreateMemoryRequest {
 }
 
 /// Search memories request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct SearchMemoriesRequest {
     pub query: String,
     pub limit: Option<usize>,
@@ -58,7 +59,7 @@ pub struct SearchMemoriesRequest {
 }
 
 /// Memory response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MemoryResponse {
     pub id: String,
     pub content: String,

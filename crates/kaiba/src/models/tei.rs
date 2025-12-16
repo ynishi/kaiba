@@ -3,10 +3,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// LLM Provider
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Provider {
     Anthropic,
@@ -38,7 +39,7 @@ impl std::str::FromStr for Provider {
 }
 
 /// Tei - Execution interface with LLM configuration
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Tei {
     pub id: Uuid,
     pub name: String,
@@ -60,7 +61,7 @@ impl Tei {
 }
 
 /// Rei-Tei association
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct ReiTei {
     pub rei_id: Uuid,
     pub tei_id: Uuid,
@@ -72,7 +73,7 @@ pub struct ReiTei {
 // ============================================
 
 /// Create Tei request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateTeiRequest {
     pub name: String,
     pub provider: Provider,
@@ -86,7 +87,7 @@ pub struct CreateTeiRequest {
 }
 
 /// Update Tei request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateTeiRequest {
     pub name: Option<String>,
     pub provider: Option<Provider>,
@@ -98,7 +99,7 @@ pub struct UpdateTeiRequest {
 }
 
 /// Tei response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TeiResponse {
     pub id: Uuid,
     pub name: String,
@@ -130,7 +131,7 @@ impl From<Tei> for TeiResponse {
 }
 
 /// Associate Tei to Rei request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AssociateTeiRequest {
     pub tei_id: Uuid,
 }

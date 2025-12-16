@@ -3,10 +3,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Task health status (from llm-toolkit)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskHealth {
     #[default]
@@ -16,7 +17,7 @@ pub enum TaskHealth {
 }
 
 /// Call log entry
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct CallLog {
     pub id: Uuid,
     pub rei_id: Uuid,
@@ -33,7 +34,7 @@ pub struct CallLog {
 // ============================================
 
 /// Call context for LLM invocation
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, ToSchema)]
 pub struct CallContext {
     pub task_type: Option<String>,
     pub task_health: Option<TaskHealth>,
@@ -43,7 +44,7 @@ pub struct CallContext {
 }
 
 /// Call request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CallRequest {
     pub tei_ids: Vec<Uuid>,
     pub message: String,
@@ -51,14 +52,14 @@ pub struct CallRequest {
 }
 
 /// Memory reference in response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct MemoryReference {
     pub id: String,
     pub similarity: f32,
 }
 
 /// Call response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct CallResponse {
     pub response: String,
     pub tei_used: Uuid,

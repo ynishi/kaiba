@@ -56,3 +56,7 @@ llm-toolkit = { version = "0.58", features = ["agent"] }
 # Error handling
 thiserror = "1.0"
 anyhow = "1.0"
+
+# OpenAPI
+utoipa = { version = "4.2", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "7.1", features = ["axum"] }

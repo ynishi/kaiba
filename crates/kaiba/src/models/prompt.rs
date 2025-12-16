@@ -3,10 +3,11 @@
 //! Support for generating prompts in various formats for external Teis.
 
 use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 /// Prompt output format
-#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum PromptFormat {
     /// Casting CLI format (system_prompt.txt compatible)
@@ -32,7 +33,7 @@ impl std::str::FromStr for PromptFormat {
 }
 
 /// Query parameters for prompt endpoint
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, IntoParams)]
 pub struct PromptQuery {
     /// Output format (default: raw)
     #[serde(default)]
@@ -51,7 +52,7 @@ fn default_true() -> bool {
 }
 
 /// Prompt response - raw format with all components
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct PromptResponse {
     /// Generated system prompt (formatted according to requested format)
     pub system_prompt: String,
@@ -64,7 +65,7 @@ pub struct PromptResponse {
 }
 
 /// Rei summary for prompt response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ReiSummary {
     pub id: Uuid,
     pub name: String,

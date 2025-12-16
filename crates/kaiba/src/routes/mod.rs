@@ -14,3 +14,4 @@ pub mod memory;
 pub mod search;
 pub mod learning;
 pub mod prompt;
+pub mod swagger;

@@ -3,10 +3,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Rei - Core persona identity
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct Rei {
     pub id: Uuid,
     pub name: String,
@@ -18,7 +19,7 @@ pub struct Rei {
 }
 
 /// Rei State - Current energy, mood, resources
-#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct ReiState {
     pub id: Uuid,
     pub rei_id: Uuid,
@@ -37,7 +38,7 @@ pub struct ReiState {
 // ============================================
 
 /// Create Rei request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateReiRequest {
     pub name: String,
     pub role: String,
@@ -46,7 +47,7 @@ pub struct CreateReiRequest {
 }
 
 /// Update Rei request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateReiRequest {
     pub name: Option<String>,
     pub role: Option<String>,
@@ -55,7 +56,7 @@ pub struct UpdateReiRequest {
 }
 
 /// Rei response with state
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ReiResponse {
     pub id: Uuid,
     pub name: String,
@@ -68,7 +69,7 @@ pub struct ReiResponse {
 }
 
 /// Rei state response
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ReiStateResponse {
     pub energy_level: i32,
     pub mood: String,
@@ -79,7 +80,7 @@ pub struct ReiStateResponse {
 }
 
 /// Update Rei state request
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateReiStateRequest {
     pub energy_level: Option<i32>,
     pub mood: Option<String>,
