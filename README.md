@@ -186,7 +186,27 @@ cargo fmt
 
 ## Design Philosophy
 
-### Rei/Tei Architecture (Inspired by Neuroscience)
+### Rei/Tei Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Rei (霊/Spirit)          │  Tei (体/Body)              │
+├─────────────────────────────────────────────────────────┤
+│  ・Identity (name, role) │  ・Interchangeable           │
+│  ・Personality           │  ・Could be Claude/GPT/etc   │
+│  ・Memories (MemoryKai)  │  ・Or SubAgent               │
+│  ・Energy/State          │  ・Or User's own LLM         │
+│  ・Interests             │  ・Or even human(!?)         │
+└─────────────────────────────────────────────────────────┘
+          ↓
+    Prompt Generation (with RAG)
+          ↓
+    Execution anywhere ← The key insight
+```
+
+The "Ghost" (Rei) is completely decoupled from the "Shell" (Tei). Your persona's
+identity, memories, and state persist regardless of which LLM—or even which
+platform—executes them. This enables true portability and continuity.
 
 Like the hippocampus forms and consolidates memories, Kaiba allows AI personas to:
 - Maintain persistent identity and accumulated knowledge (Rei)
@@ -207,13 +227,16 @@ Following Mark Weiser's principles:
 
 ## Roadmap
 
-- [x] Basic API structure
-- [x] Qdrant integration
-- [ ] Shuttle Postgres integration for metadata
-- [ ] Authentication & private endpoints
-- [ ] Autonomous heartbeat loop
-- [ ] Multiple persona support
-- [ ] LLM Tei integration (Claude, GPT-4, Gemini)
+- [x] Basic API structure (Axum + Shuttle)
+- [x] Qdrant integration (MemoryKai)
+- [x] Shuttle Postgres integration
+- [x] Authentication (API Key)
+- [x] RAG integration for LLM calls
+- [x] WebSearch (Gemini grounded search)
+- [x] Autonomous learning from interests
+- [x] Decision system (Learn/Digest/Rest)
+- [x] Energy regeneration
+- [ ] LLM provider integration (currently mock)
 - [ ] Web UI (optional, later)
 
 ## Contributing
