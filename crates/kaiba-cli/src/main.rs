@@ -115,12 +115,15 @@ enum MemoryAction {
         /// Read content from file
         #[arg(short, long)]
         file: Option<String>,
-        /// Memory type (learning, experience, knowledge, reflection)
+        /// Memory type (learning, fact, expertise, reflection)
         #[arg(short = 't', long)]
         r#type: Option<String>,
         /// Importance (0.0-1.0)
         #[arg(short, long)]
         importance: Option<f32>,
+        /// Tags for categorization (comma-separated, e.g., "rust,auth,orcs")
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
         /// Profile to use (overrides default)
         #[arg(short, long)]
         profile: Option<String>,
@@ -328,7 +331,7 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
     let client = KaibaClient::new(&config.base_url, api_key);
 
     match action {
-        MemoryAction::Add { content, file, r#type, importance, profile } => {
+        MemoryAction::Add { content, file, r#type, importance, tags, profile } => {
             let rei_id = config.get_rei_id(profile.as_deref())
                 .context("No profile specified and no default profile set. Use -p <profile> or set a default.")?;
 
@@ -352,7 +355,7 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             };
 
             let memory = client
-                .add_memory(&rei_id, &memory_content, r#type.as_deref(), importance)
+                .add_memory(&rei_id, &memory_content, r#type.as_deref(), importance, &tags)
                 .await?;
 
             let profile_name = profile.as_deref()

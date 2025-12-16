@@ -63,6 +63,8 @@ pub struct CreateMemoryRequest {
     pub memory_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub importance: Option<f32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -140,6 +142,7 @@ impl KaibaClient {
         content: &str,
         memory_type: Option<&str>,
         importance: Option<f32>,
+        tags: &[String],
     ) -> Result<MemoryResponse> {
         let url = format!("{}/kaiba/rei/{}/memories", self.base_url, rei_id);
 
@@ -147,6 +150,7 @@ impl KaibaClient {
             content: content.to_string(),
             memory_type: memory_type.map(|s| s.to_string()),
             importance,
+            tags: tags.to_vec(),
         };
 
         let resp = self.client
