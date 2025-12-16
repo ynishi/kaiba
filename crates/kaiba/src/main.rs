@@ -17,6 +17,8 @@ mod services;
 
 use services::qdrant::MemoryKai;
 use services::embedding::EmbeddingService;
+use services::web_search::WebSearchAgent;
+use services::scheduler;
 
 /// Application state shared across all routes
 #[derive(Clone)]
@@ -24,6 +26,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub memory_kai: Option<Arc<MemoryKai>>,
     pub embedding: Option<EmbeddingService>,
+    pub web_search: Option<WebSearchAgent>,
 }
 
 // Allow extracting PgPool directly from AppState (for backward compatibility)
@@ -101,8 +104,40 @@ async fn main(
         tracing::warn!("⚠️  No OPENAI_API_KEY set - Embedding disabled");
     }
 
+    // Initialize WebSearch agent if configured
+    let web_search = secrets.get("GEMINI_API_KEY").map(|key| {
+        tracing::info!("🔍 WebSearch agent initialized (Gemini)");
+        WebSearchAgent::new(key)
+    });
+
+    if web_search.is_none() {
+        tracing::warn!("⚠️  No GEMINI_API_KEY set - WebSearch disabled");
+    }
+
     // Create application state
-    let state = AppState { pool, memory_kai, embedding };
+    let state = AppState {
+        pool: pool.clone(),
+        memory_kai: memory_kai.clone(),
+        embedding: embedding.clone(),
+        web_search: web_search.clone(),
+    };
+
+    // Start learning scheduler (1 hour interval)
+    let scheduler_interval = secrets
+        .get("LEARNING_INTERVAL_SECS")
+        .and_then(|s| s.parse().ok());
+
+    if let Some(_handle) = scheduler::maybe_start_scheduler(
+        pool,
+        memory_kai,
+        embedding,
+        web_search,
+        scheduler_interval,
+    ) {
+        tracing::info!("📅 Learning scheduler started");
+    } else {
+        tracing::warn!("⚠️  Learning scheduler disabled (missing services)");
+    }
 
     // Protected routes (require authentication)
     let protected_routes = Router::new()
@@ -110,6 +145,8 @@ async fn main(
         .merge(routes::tei::router())
         .merge(routes::call::router())
         .merge(routes::memory::router())
+        .merge(routes::search::router())
+        .merge(routes::learning::router())
         .layer(middleware::from_fn(auth::auth_middleware));
 
     // Build router with shared state
