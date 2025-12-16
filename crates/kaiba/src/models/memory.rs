@@ -13,6 +13,7 @@ pub enum MemoryType {
     Learning,
     Fact,
     Expertise,
+    Reflection,
 }
 
 impl std::fmt::Display for MemoryType {
@@ -22,6 +23,7 @@ impl std::fmt::Display for MemoryType {
             MemoryType::Learning => write!(f, "learning"),
             MemoryType::Fact => write!(f, "fact"),
             MemoryType::Expertise => write!(f, "expertise"),
+            MemoryType::Reflection => write!(f, "reflection"),
         }
     }
 }
