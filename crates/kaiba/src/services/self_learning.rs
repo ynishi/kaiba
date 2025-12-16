@@ -35,6 +35,9 @@ pub struct LearningConfig {
     /// Minimum energy level required to learn
     #[serde(default = "default_min_energy")]
     pub min_energy: i32,
+    /// Force learning even if energy is low
+    #[serde(default)]
+    pub force: bool,
 }
 
 fn default_max_queries() -> usize {
@@ -50,6 +53,7 @@ impl Default for LearningConfig {
         Self {
             max_queries: default_max_queries(),
             min_energy: default_min_energy(),
+            force: false,
         }
     }
 }
@@ -87,8 +91,8 @@ impl SelfLearningService {
         let rei = self.get_rei(rei_id).await?;
         let state = self.get_rei_state(rei_id).await?;
 
-        // Check energy level
-        if state.energy_level < self.config.min_energy {
+        // Check energy level (skip if force is enabled)
+        if !self.config.force && state.energy_level < self.config.min_energy {
             return Err(SelfLearningError::InsufficientEnergy {
                 current: state.energy_level,
                 required: self.config.min_energy,

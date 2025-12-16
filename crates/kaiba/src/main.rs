@@ -122,21 +122,23 @@ async fn main(
         web_search: web_search.clone(),
     };
 
-    // Start learning scheduler (1 hour interval)
+    // Start autonomous scheduler (1 hour interval)
     let scheduler_interval = secrets
         .get("LEARNING_INTERVAL_SECS")
         .and_then(|s| s.parse().ok());
+    let gemini_api_key = secrets.get("GEMINI_API_KEY");
 
     if let Some(_handle) = scheduler::maybe_start_scheduler(
         pool,
         memory_kai,
         embedding,
         web_search,
+        gemini_api_key,
         scheduler_interval,
     ) {
-        tracing::info!("📅 Learning scheduler started");
+        tracing::info!("📅 Autonomous scheduler started");
     } else {
-        tracing::warn!("⚠️  Learning scheduler disabled (missing services)");
+        tracing::warn!("⚠️  Autonomous scheduler disabled (missing services)");
     }
 
     // Protected routes (require authentication)

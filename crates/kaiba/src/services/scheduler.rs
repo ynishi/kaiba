@@ -1,8 +1,13 @@
-//! Scheduler Service - Autonomous learning & energy regeneration
+//! Scheduler Service - Autonomous decision & action execution
 //!
-//! Runs self-learning for all Reis at configured intervals.
-//! Also handles energy regeneration based on each Rei's settings.
+//! For each Rei:
+//! 1. Regenerate energy
+//! 2. Decide action (Learn, Digest, Rest)
+//! 3. Execute action
 
+use crate::models::{Rei, ReiState, MemoryType};
+use crate::services::decision::{Action, DecisionMaker};
+use crate::services::digest::DigestService;
 use crate::services::embedding::EmbeddingService;
 use crate::services::qdrant::MemoryKai;
 use crate::services::self_learning::SelfLearningService;
@@ -11,11 +16,12 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::interval;
+use uuid::Uuid;
 
 /// Scheduler configuration
 #[derive(Debug, Clone)]
 pub struct SchedulerConfig {
-    /// Interval between learning cycles
+    /// Interval between cycles
     pub interval: Duration,
     /// Enable/disable scheduler
     pub enabled: bool,
@@ -30,22 +36,24 @@ impl Default for SchedulerConfig {
     }
 }
 
-/// Learning scheduler
-pub struct LearningScheduler {
+/// Autonomous scheduler with decision-making
+pub struct AutonomousScheduler {
     pool: PgPool,
     memory_kai: Arc<MemoryKai>,
     embedding: EmbeddingService,
     web_search: WebSearchAgent,
+    gemini_api_key: Option<String>,
     config: SchedulerConfig,
 }
 
-impl LearningScheduler {
+impl AutonomousScheduler {
     /// Creates a new scheduler
     pub fn new(
         pool: PgPool,
         memory_kai: Arc<MemoryKai>,
         embedding: EmbeddingService,
         web_search: WebSearchAgent,
+        gemini_api_key: Option<String>,
         config: Option<SchedulerConfig>,
     ) -> Self {
         Self {
@@ -53,6 +61,7 @@ impl LearningScheduler {
             memory_kai,
             embedding,
             web_search,
+            gemini_api_key,
             config: config.unwrap_or_default(),
         }
     }
@@ -67,12 +76,12 @@ impl LearningScheduler {
     /// Run the scheduler loop
     async fn run(self) {
         if !self.config.enabled {
-            tracing::info!("📅 Learning scheduler disabled");
+            tracing::info!("📅 Autonomous scheduler disabled");
             return;
         }
 
         tracing::info!(
-            "📅 Learning scheduler started (interval: {:?})",
+            "📅 Autonomous scheduler started (interval: {:?})",
             self.config.interval
         );
 
@@ -83,56 +92,162 @@ impl LearningScheduler {
 
         loop {
             ticker.tick().await;
+            tracing::info!("🔄 Scheduler: Starting autonomous cycle...");
 
             // 1. Regenerate energy for all Reis
-            tracing::info!("⚡ Scheduler: Regenerating energy...");
             match self.regenerate_all_energy().await {
-                Ok(count) => tracing::info!("⚡ Scheduler: Regenerated energy for {} Reis", count),
+                Ok(count) => tracing::info!("⚡ Regenerated energy for {} Reis", count),
                 Err(e) => tracing::warn!("⚠️  Energy regeneration failed: {}", e),
             }
 
-            // 2. Run learning cycle
-            tracing::info!("🔄 Scheduler: Starting learning cycle...");
+            // 2. Get all Reis and process each
+            let reis = match self.get_all_reis().await {
+                Ok(reis) => reis,
+                Err(e) => {
+                    tracing::error!("Failed to get Reis: {}", e);
+                    continue;
+                }
+            };
 
-            let service = SelfLearningService::new(
-                self.pool.clone(),
-                self.memory_kai.clone(),
-                self.embedding.clone(),
-                self.web_search.clone(),
-                None,
-            );
-
-            let results = service.learn_all().await;
-
-            let successful = results.iter().filter(|r| r.is_ok()).count();
-            let failed = results.iter().filter(|r| r.is_err()).count();
-
-            tracing::info!(
-                "🔄 Scheduler: Learning cycle completed ({} successful, {} failed)",
-                successful,
-                failed
-            );
-
-            // Log individual results
-            for result in &results {
-                match result {
-                    Ok(session) => {
-                        tracing::info!(
-                            "  ✅ {}: {} queries, {} memories",
-                            session.rei_name,
-                            session.queries_generated.len(),
-                            session.memories_stored
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!("  ❌ Error: {}", e);
-                    }
+            for rei in reis {
+                if let Err(e) = self.process_rei(&rei).await {
+                    tracing::warn!("⚠️  Failed to process Rei {}: {}", rei.name, e);
                 }
             }
+
+            tracing::info!("🔄 Scheduler: Autonomous cycle completed");
         }
     }
 
-    /// Regenerate energy for all Reis based on their energy_regen_per_hour setting
+    /// Process a single Rei - decide and execute action
+    async fn process_rei(&self, rei: &Rei) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Get Rei state
+        let state = sqlx::query_as::<_, ReiState>(
+            "SELECT * FROM rei_states WHERE rei_id = $1"
+        )
+        .bind(rei.id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or("Rei state not found")?;
+
+        // Count learning memories (simplified - count recent learnings)
+        let memories_count = self.count_learning_memories(rei.id).await.unwrap_or(0);
+
+        // Make decision
+        let decision_maker = DecisionMaker::new(None);
+        let decision = decision_maker.decide(&state, memories_count);
+
+        tracing::info!(
+            "🧠 {} decides: {} ({})",
+            rei.name,
+            decision.action,
+            decision.reason
+        );
+
+        // Execute action
+        match decision.action {
+            Action::Learn => {
+                self.execute_learn(rei.id).await?;
+            }
+            Action::Digest => {
+                self.execute_digest(rei.id).await?;
+            }
+            Action::Rest => {
+                tracing::info!("  😴 {} is resting", rei.name);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Execute learning action
+    async fn execute_learn(&self, rei_id: Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let service = SelfLearningService::new(
+            self.pool.clone(),
+            self.memory_kai.clone(),
+            self.embedding.clone(),
+            self.web_search.clone(),
+            None,
+        );
+
+        match service.learn(rei_id).await {
+            Ok(session) => {
+                tracing::info!(
+                    "  🔍 Learned: {} queries, {} memories stored",
+                    session.queries_generated.len(),
+                    session.memories_stored
+                );
+            }
+            Err(e) => {
+                tracing::warn!("  ❌ Learning failed: {}", e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Execute digest action
+    async fn execute_digest(&self, rei_id: Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let service = DigestService::new(
+            self.pool.clone(),
+            self.memory_kai.clone(),
+            self.embedding.clone(),
+            self.gemini_api_key.clone(),
+        );
+
+        match service.digest(rei_id).await {
+            Ok(result) => {
+                tracing::info!(
+                    "  📝 Digested: {} memories -> expertise",
+                    result.memories_processed
+                );
+            }
+            Err(e) => {
+                tracing::warn!("  ❌ Digest failed: {}", e);
+            }
+        }
+
+        // Reduce energy for digest
+        sqlx::query("UPDATE rei_states SET energy_level = GREATEST(0, energy_level - 20) WHERE rei_id = $1")
+            .bind(rei_id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Count learning memories for a Rei
+    async fn count_learning_memories(&self, rei_id: Uuid) -> Result<usize, String> {
+        // Search for learning memories
+        let query_vector = self
+            .embedding
+            .embed("learning")
+            .await
+            .map_err(|e| format!("Embedding failed: {}", e))?;
+
+        let memories = self
+            .memory_kai
+            .search_memories(&rei_id.to_string(), query_vector, 20)
+            .await
+            .map_err(|e| format!("Search failed: {}", e))?;
+
+        let count = memories
+            .iter()
+            .filter(|m| matches!(m.memory_type, MemoryType::Learning))
+            .count();
+
+        Ok(count)
+    }
+
+    /// Get all Reis
+    async fn get_all_reis(&self) -> Result<Vec<Rei>, Box<dyn std::error::Error + Send + Sync>> {
+        let reis = sqlx::query_as::<_, Rei>("SELECT * FROM reis")
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(reis)
+    }
+
+    /// Regenerate energy for all Reis
     async fn regenerate_all_energy(&self) -> Result<u64, Box<dyn std::error::Error + Send + Sync>> {
         let result = sqlx::query(
             r#"
@@ -154,6 +269,7 @@ pub fn maybe_start_scheduler(
     memory_kai: Option<Arc<MemoryKai>>,
     embedding: Option<EmbeddingService>,
     web_search: Option<WebSearchAgent>,
+    gemini_api_key: Option<String>,
     interval_secs: Option<u64>,
 ) -> Option<tokio::task::JoinHandle<()>> {
     let memory_kai = memory_kai?;
@@ -165,7 +281,14 @@ pub fn maybe_start_scheduler(
         enabled: true,
     };
 
-    let scheduler = LearningScheduler::new(pool, memory_kai, embedding, web_search, Some(config));
+    let scheduler = AutonomousScheduler::new(
+        pool,
+        memory_kai,
+        embedding,
+        web_search,
+        gemini_api_key,
+        Some(config),
+    );
 
     Some(scheduler.start())
 }

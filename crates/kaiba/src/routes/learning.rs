@@ -20,6 +20,9 @@ use crate::AppState;
 #[derive(Debug, Deserialize)]
 pub struct LearnRequest {
     pub max_queries: Option<usize>,
+    /// Force learning even if energy is low
+    #[serde(default)]
+    pub force: bool,
 }
 
 /// Learning response
@@ -62,11 +65,10 @@ async fn learn_rei(
     ))?;
 
     // Build config from request
-    let config = payload.and_then(|p| {
-        p.max_queries.map(|max| LearningConfig {
-            max_queries: max,
-            ..Default::default()
-        })
+    let config = payload.map(|p| LearningConfig {
+        max_queries: p.max_queries.unwrap_or(3),
+        force: p.force,
+        ..Default::default()
     });
 
     // Create service and execute learning
