@@ -1,5 +1,7 @@
 # Kaiba (海馬) - Autonomous Persona Architecture
 
+[![Crates.io](https://img.shields.io/crates/v/kaiba-cli.svg)](https://crates.io/crates/kaiba-cli)
+
 > "Memories flow through the hippocampus" - A headless API service for persistent AI personas
 
 ## Overview
