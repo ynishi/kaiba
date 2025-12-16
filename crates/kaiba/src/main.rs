@@ -149,6 +149,7 @@ async fn main(
         .merge(routes::memory::router())
         .merge(routes::search::router())
         .merge(routes::learning::router())
+        .merge(routes::prompt::router())
         .layer(middleware::from_fn(auth::auth_middleware));
 
     // Build router with shared state

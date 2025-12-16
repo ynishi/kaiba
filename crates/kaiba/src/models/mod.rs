@@ -9,8 +9,10 @@ mod rei;
 mod tei;
 mod memory;
 mod call;
+mod prompt;
 
 pub use rei::*;
 pub use tei::*;
 pub use memory::*;
 pub use call::*;
+pub use prompt::*;
