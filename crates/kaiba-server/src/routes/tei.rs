@@ -1,15 +1,25 @@
 //! Tei (体) Routes - Execution Interface Management
+//!
+//! HTTP handlers that delegate to TeiService for business logic.
 
 use axum::{
     extract::{Path, State},
     routing::{delete, get},
     Json, Router,
 };
-use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::models::{AssociateTeiRequest, CreateTeiRequest, Tei, TeiResponse, UpdateTeiRequest};
+use crate::models::{AssociateTeiRequest, CreateTeiRequest, Provider, TeiResponse, UpdateTeiRequest};
 use crate::AppState;
+
+/// Convert DTO Provider to domain Provider
+fn to_domain_provider(p: Provider) -> kaiba::Provider {
+    match p {
+        Provider::Anthropic => kaiba::Provider::Anthropic,
+        Provider::OpenAI => kaiba::Provider::OpenAI,
+        Provider::Google => kaiba::Provider::Google,
+    }
+}
 
 /// List all Teis
 #[utoipa::path(
@@ -22,14 +32,31 @@ use crate::AppState;
     tag = "Tei"
 )]
 pub async fn list_teis(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<Vec<TeiResponse>>, (axum::http::StatusCode, String)> {
-    let teis = sqlx::query_as::<_, Tei>("SELECT * FROM teis ORDER BY priority, created_at DESC")
-        .fetch_all(&pool)
+    let teis = state
+        .tei_service
+        .list_all()
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(teis.into_iter().map(TeiResponse::from).collect()))
+    let responses: Vec<TeiResponse> = teis
+        .into_iter()
+        .map(|tei| TeiResponse {
+            id: tei.id,
+            name: tei.name,
+            provider: tei.provider,
+            model_id: tei.model_id,
+            is_fallback: tei.is_fallback,
+            priority: tei.priority,
+            config: tei.config,
+            expertise: tei.expertise,
+            created_at: tei.created_at,
+            updated_at: tei.updated_at,
+        })
+        .collect();
+
+    Ok(Json(responses))
 }
 
 /// Create new Tei
@@ -44,32 +71,35 @@ pub async fn list_teis(
     tag = "Tei"
 )]
 pub async fn create_tei(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Json(payload): Json<CreateTeiRequest>,
 ) -> Result<Json<TeiResponse>, (axum::http::StatusCode, String)> {
-    let config = payload.config.unwrap_or(serde_json::json!({}));
+    let tei = state
+        .tei_service
+        .create(
+            payload.name,
+            to_domain_provider(payload.provider),
+            payload.model_id,
+            payload.is_fallback,
+            payload.priority,
+            payload.config,
+            payload.expertise,
+        )
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let tei = sqlx::query_as::<_, Tei>(
-        r#"
-        INSERT INTO teis (name, provider, model_id, is_fallback, priority, config, expertise)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING *
-        "#,
-    )
-    .bind(&payload.name)
-    .bind(payload.provider.to_string())
-    .bind(&payload.model_id)
-    .bind(payload.is_fallback)
-    .bind(payload.priority)
-    .bind(&config)
-    .bind(&payload.expertise)
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    tracing::info!("Created Tei: {} ({}) - {}", tei.name, tei.id, tei.model_id);
-
-    Ok(Json(tei.into()))
+    Ok(Json(TeiResponse {
+        id: tei.id,
+        name: tei.name,
+        provider: tei.provider,
+        model_id: tei.model_id,
+        is_fallback: tei.is_fallback,
+        priority: tei.priority,
+        config: tei.config,
+        expertise: tei.expertise,
+        created_at: tei.created_at,
+        updated_at: tei.updated_at,
+    }))
 }
 
 /// Get Tei by ID
@@ -85,12 +115,12 @@ pub async fn create_tei(
     tag = "Tei"
 )]
 pub async fn get_tei(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<TeiResponse>, (axum::http::StatusCode, String)> {
-    let tei = sqlx::query_as::<_, Tei>("SELECT * FROM teis WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
+    let tei = state
+        .tei_service
+        .get_by_id(id)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or((
@@ -98,7 +128,18 @@ pub async fn get_tei(
             "Tei not found".to_string(),
         ))?;
 
-    Ok(Json(tei.into()))
+    Ok(Json(TeiResponse {
+        id: tei.id,
+        name: tei.name,
+        provider: tei.provider,
+        model_id: tei.model_id,
+        is_fallback: tei.is_fallback,
+        priority: tei.priority,
+        config: tei.config,
+        expertise: tei.expertise,
+        created_at: tei.created_at,
+        updated_at: tei.updated_at,
+    }))
 }
 
 /// Update Tei
@@ -115,48 +156,42 @@ pub async fn get_tei(
     tag = "Tei"
 )]
 pub async fn update_tei(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(payload): Json<UpdateTeiRequest>,
 ) -> Result<Json<TeiResponse>, (axum::http::StatusCode, String)> {
-    // Get current Tei
-    let current = sqlx::query_as::<_, Tei>("SELECT * FROM teis WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
+    let tei = state
+        .tei_service
+        .update(
+            id,
+            payload.name,
+            payload.provider.map(to_domain_provider),
+            payload.model_id,
+            payload.is_fallback,
+            payload.priority,
+            payload.config,
+            payload.expertise,
+        )
         .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((
-            axum::http::StatusCode::NOT_FOUND,
-            "Tei not found".to_string(),
-        ))?;
+        .map_err(|e| match e {
+            kaiba::DomainError::NotFound { .. } => {
+                (axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string())
+            }
+            _ => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
 
-    let tei = sqlx::query_as::<_, Tei>(
-        r#"
-        UPDATE teis
-        SET name = $2, provider = $3, model_id = $4, is_fallback = $5,
-            priority = $6, config = $7, expertise = $8
-        WHERE id = $1
-        RETURNING *
-        "#,
-    )
-    .bind(id)
-    .bind(payload.name.unwrap_or(current.name))
-    .bind(
-        payload
-            .provider
-            .map(|p| p.to_string())
-            .unwrap_or(current.provider),
-    )
-    .bind(payload.model_id.unwrap_or(current.model_id))
-    .bind(payload.is_fallback.unwrap_or(current.is_fallback))
-    .bind(payload.priority.unwrap_or(current.priority))
-    .bind(payload.config.unwrap_or(current.config))
-    .bind(payload.expertise.or(current.expertise))
-    .fetch_one(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    Ok(Json(tei.into()))
+    Ok(Json(TeiResponse {
+        id: tei.id,
+        name: tei.name,
+        provider: tei.provider,
+        model_id: tei.model_id,
+        is_fallback: tei.is_fallback,
+        priority: tei.priority,
+        config: tei.config,
+        expertise: tei.expertise,
+        created_at: tei.created_at,
+        updated_at: tei.updated_at,
+    }))
 }
 
 /// Delete Tei
@@ -172,23 +207,21 @@ pub async fn update_tei(
     tag = "Tei"
 )]
 pub async fn delete_tei(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let result = sqlx::query("DELETE FROM teis WHERE id = $1")
-        .bind(id)
-        .execute(&pool)
+    let deleted = state
+        .tei_service
+        .delete(id)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if result.rows_affected() == 0 {
+    if !deleted {
         return Err((
             axum::http::StatusCode::NOT_FOUND,
             "Tei not found".to_string(),
         ));
     }
-
-    tracing::info!("Deleted Tei: {}", id);
 
     Ok(Json(serde_json::json!({
         "status": "ok",
@@ -209,20 +242,16 @@ pub async fn delete_tei(
     tag = "Tei"
 )]
 pub async fn get_tei_expertise(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let tei = sqlx::query_as::<_, Tei>("SELECT * FROM teis WHERE id = $1")
-        .bind(id)
-        .fetch_optional(&pool)
+    let expertise = state
+        .tei_service
+        .get_expertise(id)
         .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((
-            axum::http::StatusCode::NOT_FOUND,
-            "Tei not found".to_string(),
-        ))?;
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(tei.expertise.unwrap_or(serde_json::json!(null))))
+    Ok(Json(expertise.unwrap_or(serde_json::json!(null))))
 }
 
 /// Update Tei expertise
@@ -238,25 +267,22 @@ pub async fn get_tei_expertise(
     tag = "Tei"
 )]
 pub async fn update_tei_expertise(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(id): Path<Uuid>,
     Json(expertise): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let result = sqlx::query("UPDATE teis SET expertise = $2 WHERE id = $1")
-        .bind(id)
-        .bind(&expertise)
-        .execute(&pool)
+    let result = state
+        .tei_service
+        .update_expertise(id, expertise)
         .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        .map_err(|e| match e {
+            kaiba::DomainError::NotFound { .. } => {
+                (axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string())
+            }
+            _ => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
 
-    if result.rows_affected() == 0 {
-        return Err((
-            axum::http::StatusCode::NOT_FOUND,
-            "Tei not found".to_string(),
-        ));
-    }
-
-    Ok(Json(expertise))
+    Ok(Json(result))
 }
 
 // ============================================
@@ -275,23 +301,32 @@ pub async fn update_tei_expertise(
     tag = "Tei"
 )]
 pub async fn list_rei_teis(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
 ) -> Result<Json<Vec<TeiResponse>>, (axum::http::StatusCode, String)> {
-    let teis = sqlx::query_as::<_, Tei>(
-        r#"
-        SELECT t.* FROM teis t
-        INNER JOIN rei_teis rt ON t.id = rt.tei_id
-        WHERE rt.rei_id = $1
-        ORDER BY t.priority, t.created_at DESC
-        "#,
-    )
-    .bind(rei_id)
-    .fetch_all(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let teis = state
+        .tei_service
+        .list_by_rei(rei_id)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(teis.into_iter().map(TeiResponse::from).collect()))
+    let responses: Vec<TeiResponse> = teis
+        .into_iter()
+        .map(|tei| TeiResponse {
+            id: tei.id,
+            name: tei.name,
+            provider: tei.provider,
+            model_id: tei.model_id,
+            is_fallback: tei.is_fallback,
+            priority: tei.priority,
+            config: tei.config,
+            expertise: tei.expertise,
+            created_at: tei.created_at,
+            updated_at: tei.updated_at,
+        })
+        .collect();
+
+    Ok(Json(responses))
 }
 
 /// Associate Tei with Rei
@@ -308,55 +343,21 @@ pub async fn list_rei_teis(
     tag = "Tei"
 )]
 pub async fn associate_tei(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<AssociateTeiRequest>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    // Verify Rei exists
-    let rei_exists =
-        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM reis WHERE id = $1)")
-            .bind(rei_id)
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    if !rei_exists {
-        return Err((
-            axum::http::StatusCode::NOT_FOUND,
-            "Rei not found".to_string(),
-        ));
-    }
-
-    // Verify Tei exists
-    let tei_exists =
-        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM teis WHERE id = $1)")
-            .bind(payload.tei_id)
-            .fetch_one(&pool)
-            .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    if !tei_exists {
-        return Err((
-            axum::http::StatusCode::NOT_FOUND,
-            "Tei not found".to_string(),
-        ));
-    }
-
-    // Create association (ignore if already exists)
-    sqlx::query(
-        r#"
-        INSERT INTO rei_teis (rei_id, tei_id)
-        VALUES ($1, $2)
-        ON CONFLICT DO NOTHING
-        "#,
-    )
-    .bind(rei_id)
-    .bind(payload.tei_id)
-    .execute(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    tracing::info!("Associated Tei {} with Rei {}", payload.tei_id, rei_id);
+    state
+        .tei_service
+        .associate(rei_id, payload.tei_id)
+        .await
+        .map_err(|e| match e {
+            kaiba::DomainError::NotFound { entity_type, .. } => (
+                axum::http::StatusCode::NOT_FOUND,
+                format!("{} not found", entity_type),
+            ),
+            _ => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        })?;
 
     Ok(Json(serde_json::json!({
         "status": "ok",
@@ -380,17 +381,16 @@ pub async fn associate_tei(
     tag = "Tei"
 )]
 pub async fn disassociate_tei(
-    State(pool): State<PgPool>,
+    State(state): State<AppState>,
     Path((rei_id, tei_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let result = sqlx::query("DELETE FROM rei_teis WHERE rei_id = $1 AND tei_id = $2")
-        .bind(rei_id)
-        .bind(tei_id)
-        .execute(&pool)
+    let removed = state
+        .tei_service
+        .disassociate(rei_id, tei_id)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    if result.rows_affected() == 0 {
+    if !removed {
         return Err((
             axum::http::StatusCode::NOT_FOUND,
             "Association not found".to_string(),

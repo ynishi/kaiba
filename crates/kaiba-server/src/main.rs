@@ -6,20 +6,30 @@ use tower_http::cors::CorsLayer;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+mod adapters;
+mod application;
 mod auth;
 mod models;
 mod routes;
 mod services;
 
+use adapters::{PgReiRepository, PgTeiRepository};
+use application::{ReiService, TeiService};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
 use services::scheduler;
 use services::web_search::WebSearchAgent;
 
+/// Type aliases for application services with concrete repository implementations
+pub type AppReiService = ReiService<PgReiRepository>;
+pub type AppTeiService = TeiService<PgTeiRepository>;
+
 /// Application state shared across all routes
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
+    pub rei_service: Arc<AppReiService>,
+    pub tei_service: Arc<AppTeiService>,
     pub memory_kai: Option<Arc<MemoryKai>>,
     pub embedding: Option<EmbeddingService>,
     pub web_search: Option<WebSearchAgent>,
@@ -108,9 +118,17 @@ async fn main(
         tracing::warn!("⚠️  No GEMINI_API_KEY set - WebSearch disabled");
     }
 
+    // Initialize application services
+    let rei_repo = Arc::new(PgReiRepository::new(pool.clone()));
+    let tei_repo = Arc::new(PgTeiRepository::new(pool.clone()));
+    let rei_service = Arc::new(ReiService::new(rei_repo));
+    let tei_service = Arc::new(TeiService::new(tei_repo));
+
     // Create application state
     let state = AppState {
         pool: pool.clone(),
+        rei_service,
+        tei_service,
         memory_kai: memory_kai.clone(),
         embedding: embedding.clone(),
         web_search: web_search.clone(),
