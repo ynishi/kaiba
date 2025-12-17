@@ -6,15 +6,18 @@
 //! - Memory: Long-term storage
 //! - Call: LLM invocation record
 //! - Prompt: Prompt templates
+//! - Message: Platform integration message
 
 mod call;
 mod memory;
+mod message;
 mod prompt;
 mod rei;
 mod tei;
 
 pub use call::*;
 pub use memory::*;
+pub use message::*;
 pub use prompt::*;
 pub use rei::*;
 pub use tei::*;

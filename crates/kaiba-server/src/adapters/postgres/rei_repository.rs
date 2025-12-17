@@ -95,11 +95,12 @@ impl ReiRepository for PgReiRepository {
 
     async fn save(&self, rei: &Rei) -> Result<Rei, DomainError> {
         // Check if exists
-        let exists = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM reis WHERE id = $1)")
-            .bind(rei.id)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| DomainError::Repository(e.to_string()))?;
+        let exists =
+            sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM reis WHERE id = $1)")
+                .bind(rei.id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|e| DomainError::Repository(e.to_string()))?;
 
         let row = if exists {
             // Update

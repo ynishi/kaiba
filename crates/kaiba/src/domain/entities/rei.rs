@@ -35,7 +35,12 @@ pub struct ReiState {
 
 impl Rei {
     /// Create a new Rei with generated ID and timestamps
-    pub fn new(name: String, role: String, avatar_url: Option<String>, manifest: Option<serde_json::Value>) -> Self {
+    pub fn new(
+        name: String,
+        role: String,
+        avatar_url: Option<String>,
+        manifest: Option<serde_json::Value>,
+    ) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),

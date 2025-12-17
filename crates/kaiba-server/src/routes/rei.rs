@@ -180,9 +180,10 @@ pub async fn update_rei(
         )
         .await
         .map_err(|e| match e {
-            kaiba::DomainError::NotFound { .. } => {
-                (axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string())
-            }
+            kaiba::DomainError::NotFound { .. } => (
+                axum::http::StatusCode::NOT_FOUND,
+                "Rei not found".to_string(),
+            ),
             _ => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 

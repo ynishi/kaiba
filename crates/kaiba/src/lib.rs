@@ -27,10 +27,26 @@ pub mod ports;
 
 // Re-export commonly used types
 pub use domain::{
-    Call, DomainError, Memory, MemoryType, Prompt, Provider, Rei, ReiState, ReiTei,
+    Call, DomainError, Memory, MemoryType, Message, Prompt, Provider, Rei, ReiState, ReiTei,
     TagMatchMode, Tei,
 };
 pub use ports::{
-    EmbeddingService, MemoryRepository, MemorySearchFilter, ReiRepository, TeiRepository,
-    WebSearchResult, WebSearchService,
+    // Tei Services (体 - execution interfaces)
+    ChatMessage,
+    CompletionOptions,
+    CompletionResponse,
+    EmbeddingService,
+    IntegrationConfig,
+    IntegrationEvent,
+    // Repositories
+    MemoryRepository,
+    MemorySearchFilter,
+    MessageRole,
+    ReiRepository,
+    TeiIntegration,
+    TeiLlmProvider,
+    TeiRepository,
+    TokenUsage,
+    WebSearchResult,
+    WebSearchService,
 };

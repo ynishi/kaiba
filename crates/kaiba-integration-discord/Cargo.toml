@@ -1,0 +1,37 @@
+[package]
+name = "kaiba-integration-discord"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Discord integration for Kaiba AI persona system"
+
+[lib]
+name = "kaiba_integration_discord"
+path = "src/lib.rs"
+
+[dependencies]
+# Core domain
+kaiba = { path = "../kaiba" }
+
+# Discord SDK
+serenity = { version = "0.12", default-features = false, features = [
+    "client",
+    "gateway",
+    "rustls_backend",
+    "model",
+] }
+
+# Async
+tokio = { workspace = true }
+async-trait = "0.1"
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+chrono = { workspace = true }

@@ -4,6 +4,7 @@ members = [
     "crates/kaiba",
     "crates/kaiba-server",
     "crates/kaiba-cli",
+    "crates/kaiba-integration-discord",
 ]
 
 [workspace.package]

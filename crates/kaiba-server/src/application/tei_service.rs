@@ -38,10 +38,23 @@ impl<R: TeiRepository> TeiService<R> {
         config: Option<serde_json::Value>,
         expertise: Option<serde_json::Value>,
     ) -> Result<Tei, DomainError> {
-        let tei = Tei::new(name, provider, model_id, is_fallback, priority, config, expertise);
+        let tei = Tei::new(
+            name,
+            provider,
+            model_id,
+            is_fallback,
+            priority,
+            config,
+            expertise,
+        );
         let saved = self.repo.save(&tei).await?;
 
-        tracing::info!("Created Tei: {} ({}) - {}", saved.name, saved.id, saved.model_id);
+        tracing::info!(
+            "Created Tei: {} ({}) - {}",
+            saved.name,
+            saved.id,
+            saved.model_id
+        );
 
         Ok(saved)
     }

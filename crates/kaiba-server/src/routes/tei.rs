@@ -9,7 +9,9 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::models::{AssociateTeiRequest, CreateTeiRequest, Provider, TeiResponse, UpdateTeiRequest};
+use crate::models::{
+    AssociateTeiRequest, CreateTeiRequest, Provider, TeiResponse, UpdateTeiRequest,
+};
 use crate::AppState;
 
 /// Convert DTO Provider to domain Provider
@@ -174,9 +176,10 @@ pub async fn update_tei(
         )
         .await
         .map_err(|e| match e {
-            kaiba::DomainError::NotFound { .. } => {
-                (axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string())
-            }
+            kaiba::DomainError::NotFound { .. } => (
+                axum::http::StatusCode::NOT_FOUND,
+                "Tei not found".to_string(),
+            ),
             _ => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 
@@ -276,9 +279,10 @@ pub async fn update_tei_expertise(
         .update_expertise(id, expertise)
         .await
         .map_err(|e| match e {
-            kaiba::DomainError::NotFound { .. } => {
-                (axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string())
-            }
+            kaiba::DomainError::NotFound { .. } => (
+                axum::http::StatusCode::NOT_FOUND,
+                "Tei not found".to_string(),
+            ),
             _ => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
         })?;
 
