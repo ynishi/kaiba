@@ -10,10 +10,11 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::models::{
-    Memory, PromptFormat, PromptQuery, PromptResponse, Rei, ReiState, ReiSummary,
+    Memory, PromptFormat, PromptQuery, PromptResponse, Rei, ReiState, ReiSummary, TagMatchMode,
 };
+use crate::services::SearchFilter;
+use crate::AppState;
 
 /// Generate prompt for external Tei
 ///
@@ -55,7 +56,10 @@ pub async fn generate_prompt(
         .fetch_optional(pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string()))?;
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei not found".to_string(),
+        ))?;
 
     // 3. Load Rei state
     let rei_state = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
@@ -71,7 +75,20 @@ pub async fn generate_prompt(
     // 4. RAG: Search relevant memories if requested
     let memories = if query.include_memories {
         let context = query.context.as_deref().unwrap_or(&rei.name);
-        search_memories_for_prompt(&state, &rei_id, context, query.memory_limit).await?
+        let focus_tags: Vec<String> = query
+            .focus_tags
+            .as_deref()
+            .map(|s| s.split(',').map(|t| t.trim().to_string()).collect())
+            .unwrap_or_default();
+        search_memories_for_prompt(
+            &state,
+            &rei_id,
+            context,
+            query.memory_limit,
+            focus_tags,
+            query.min_importance,
+        )
+        .await?
     } else {
         vec![]
     };
@@ -271,6 +288,8 @@ async fn search_memories_for_prompt(
     rei_id: &Uuid,
     query: &str,
     limit: Option<usize>,
+    focus_tags: Vec<String>,
+    min_importance: Option<f32>,
 ) -> Result<Vec<Memory>, (axum::http::StatusCode, String)> {
     let memory_kai = match &state.memory_kai {
         Some(kai) => kai,
@@ -285,23 +304,25 @@ async fn search_memories_for_prompt(
     // Generate query embedding
     let query_vector = embedding_service.embed(query).await.map_err(|e| {
         tracing::warn!("Failed to generate embedding for prompt RAG: {}", e);
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            e.to_string(),
-        )
+        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
+
+    // Build search filter
+    let filter = SearchFilter {
+        memory_type: None, // Don't filter by type in prompt context
+        tags: focus_tags,
+        tags_match_mode: TagMatchMode::Any, // OR match for prompt context
+        min_importance,
+    };
 
     // Search memories
     let limit = limit.unwrap_or(5);
     let memories = memory_kai
-        .search_memories(&rei_id.to_string(), query_vector, limit)
+        .search_memories_with_filter(&rei_id.to_string(), query_vector, limit, filter)
         .await
         .map_err(|e| {
             tracing::warn!("Failed to search memories for prompt: {}", e);
-            (
-                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-                e.to_string(),
-            )
+            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
 
     Ok(memories)

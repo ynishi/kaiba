@@ -6,7 +6,7 @@
 //! 3. Execute WebSearch via Gemini
 //! 4. Store results to MemoryKai (記憶海)
 
-use crate::models::{Rei, ReiState, Memory, MemoryType};
+use crate::models::{Memory, MemoryType, Rei, ReiState};
 use crate::services::embedding::EmbeddingService;
 use crate::services::qdrant::MemoryKai;
 use crate::services::web_search::{WebSearchAgent, WebSearchResponse};
@@ -242,7 +242,12 @@ impl SelfLearningService {
         if !response.references.is_empty() {
             content.push_str("\n\n### Sources:\n");
             for (i, reference) in response.references.iter().take(5).enumerate() {
-                content.push_str(&format!("{}. [{}]({})\n", i + 1, reference.title, reference.url));
+                content.push_str(&format!(
+                    "{}. [{}]({})\n",
+                    i + 1,
+                    reference.title,
+                    reference.url
+                ));
             }
         }
 

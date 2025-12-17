@@ -27,7 +27,10 @@ impl std::str::FromStr for PromptFormat {
             "casting" => Ok(PromptFormat::Casting),
             "claude-code" | "claudecode" | "claude" => Ok(PromptFormat::ClaudeCode),
             "raw" => Ok(PromptFormat::Raw),
-            _ => Err(format!("Unknown format: {}. Valid: casting, claude-code, raw", s)),
+            _ => Err(format!(
+                "Unknown format: {}. Valid: casting, claude-code, raw",
+                s
+            )),
         }
     }
 }
@@ -45,6 +48,10 @@ pub struct PromptQuery {
     pub memory_limit: Option<usize>,
     /// Optional context/query for memory search
     pub context: Option<String>,
+    /// Focus tags for filtering memories (comma-separated, OR match)
+    pub focus_tags: Option<String>,
+    /// Minimum importance score for memories (0.0 - 1.0)
+    pub min_importance: Option<f32>,
 }
 
 fn default_true() -> bool {

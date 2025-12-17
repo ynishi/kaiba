@@ -150,9 +150,13 @@ async fn main() -> Result<()> {
         Commands::Profile { action } => cmd_profile(action).await,
         Commands::Rei { action } => cmd_rei(action).await,
         Commands::Memory { action } => cmd_memory(action).await,
-        Commands::Prompt { format, include_memories, context, profile, verbose } => {
-            cmd_prompt(format, include_memories, context, profile, verbose).await
-        }
+        Commands::Prompt {
+            format,
+            include_memories,
+            context,
+            profile,
+            verbose,
+        } => cmd_prompt(format, include_memories, context, profile, verbose).await,
         Commands::Config => cmd_config(),
     }
 }
@@ -166,12 +170,10 @@ async fn cmd_login(key: Option<String>) -> Result<()> {
 
     let api_key = match key {
         Some(k) => k,
-        None => {
-            Password::new()
-                .with_prompt("API Key")
-                .interact()
-                .context("Failed to read API key")?
-        }
+        None => Password::new()
+            .with_prompt("API Key")
+            .interact()
+            .context("Failed to read API key")?,
     };
 
     // Test connection
@@ -191,11 +193,18 @@ async fn cmd_login(key: Option<String>) -> Result<()> {
     config.set_api_key(api_key);
     config.save()?;
 
-    println!("{} API key saved to {:?}", "✓".green(), Config::config_path()?);
+    println!(
+        "{} API key saved to {:?}",
+        "✓".green(),
+        Config::config_path()?
+    );
 
     // Offer to set up a profile if none exists
     if config.profiles.is_empty() {
-        println!("\n{}", "Tip: Set up a profile to avoid typing Rei IDs:".yellow());
+        println!(
+            "\n{}",
+            "Tip: Set up a profile to avoid typing Rei IDs:".yellow()
+        );
         println!("  kaiba rei list");
         println!("  kaiba profile add mai --rei-id <REI_ID>");
         println!("  kaiba profile set mai");
@@ -208,7 +217,11 @@ async fn cmd_profile(action: ProfileAction) -> Result<()> {
     let mut config = Config::load()?;
 
     match action {
-        ProfileAction::Add { name, rei_id, display_name } => {
+        ProfileAction::Add {
+            name,
+            rei_id,
+            display_name,
+        } => {
             // Verify Rei exists if we have an API key
             if let Some(api_key) = &config.api_key {
                 let client = KaibaClient::new(&config.base_url, api_key);
@@ -226,7 +239,11 @@ async fn cmd_profile(action: ProfileAction) -> Result<()> {
             } else {
                 config.add_profile(name.clone(), rei_id, display_name);
                 config.save()?;
-                println!("{} Profile '{}' added (unverified - no API key)", "✓".yellow(), name);
+                println!(
+                    "{} Profile '{}' added (unverified - no API key)",
+                    "✓".yellow(),
+                    name
+                );
             }
         }
 
@@ -241,7 +258,11 @@ async fn cmd_profile(action: ProfileAction) -> Result<()> {
             println!("{}", "Profiles:".bold());
             for (name, profile) in &config.profiles {
                 let is_default = config.default_profile.as_ref() == Some(name);
-                let default_marker = if is_default { " (default)".green().to_string() } else { String::new() };
+                let default_marker = if is_default {
+                    " (default)".green().to_string()
+                } else {
+                    String::new()
+                };
                 let display_name = profile.name.as_deref().unwrap_or("-");
 
                 println!(
@@ -282,7 +303,9 @@ async fn cmd_profile(action: ProfileAction) -> Result<()> {
 
 async fn cmd_rei(action: ReiAction) -> Result<()> {
     let config = Config::load()?;
-    let api_key = config.api_key.as_ref()
+    let api_key = config
+        .api_key
+        .as_ref()
         .context("Not logged in. Run 'kaiba login' first.")?;
 
     let client = KaibaClient::new(&config.base_url, api_key);
@@ -325,13 +348,22 @@ async fn cmd_rei(action: ReiAction) -> Result<()> {
 
 async fn cmd_memory(action: MemoryAction) -> Result<()> {
     let config = Config::load()?;
-    let api_key = config.api_key.as_ref()
+    let api_key = config
+        .api_key
+        .as_ref()
         .context("Not logged in. Run 'kaiba login' first.")?;
 
     let client = KaibaClient::new(&config.base_url, api_key);
 
     match action {
-        MemoryAction::Add { content, file, r#type, importance, tags, profile } => {
+        MemoryAction::Add {
+            content,
+            file,
+            r#type,
+            importance,
+            tags,
+            profile,
+        } => {
             let rei_id = config.get_rei_id(profile.as_deref())
                 .context("No profile specified and no default profile set. Use -p <profile> or set a default.")?;
 
@@ -339,8 +371,7 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             let memory_content = match (content, file) {
                 (Some(c), None) => c,
                 (None, Some(f)) => {
-                    fs::read_to_string(&f)
-                        .with_context(|| format!("Failed to read file: {}", f))?
+                    fs::read_to_string(&f).with_context(|| format!("Failed to read file: {}", f))?
                 }
                 (Some(_), Some(_)) => {
                     bail!("Cannot specify both content and --file");
@@ -355,10 +386,17 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             };
 
             let memory = client
-                .add_memory(&rei_id, &memory_content, r#type.as_deref(), importance, &tags)
+                .add_memory(
+                    &rei_id,
+                    &memory_content,
+                    r#type.as_deref(),
+                    importance,
+                    &tags,
+                )
                 .await?;
 
-            let profile_name = profile.as_deref()
+            let profile_name = profile
+                .as_deref()
                 .or(config.default_profile.as_deref())
                 .unwrap_or("default");
 
@@ -373,24 +411,32 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             println!("  {}", truncate_string(&memory_content, 80).dimmed());
         }
 
-        MemoryAction::Search { query, limit, profile } => {
+        MemoryAction::Search {
+            query,
+            limit,
+            profile,
+        } => {
             let rei_id = config.get_rei_id(profile.as_deref())
                 .context("No profile specified and no default profile set. Use -p <profile> or set a default.")?;
 
-            let memories = client
-                .search_memories(&rei_id, &query, Some(limit))
-                .await?;
+            let memories = client.search_memories(&rei_id, &query, Some(limit)).await?;
 
             if memories.is_empty() {
                 println!("No memories found for '{}'", query);
                 return Ok(());
             }
 
-            let profile_name = profile.as_deref()
+            let profile_name = profile
+                .as_deref()
                 .or(config.default_profile.as_deref())
                 .unwrap_or("default");
 
-            println!("{} results for '{}' ({}):", memories.len().to_string().green(), query, profile_name.cyan());
+            println!(
+                "{} results for '{}' ({}):",
+                memories.len().to_string().green(),
+                query,
+                profile_name.cyan()
+            );
 
             for mem in memories {
                 let type_badge = format!("[{}]", mem.memory_type).dimmed();
@@ -411,21 +457,19 @@ async fn cmd_prompt(
     verbose: bool,
 ) -> Result<()> {
     let config = Config::load()?;
-    let api_key = config.api_key.as_ref()
+    let api_key = config
+        .api_key
+        .as_ref()
         .context("Not logged in. Run 'kaiba login' first.")?;
 
-    let rei_id = config.get_rei_id(profile.as_deref())
-        .context("No profile specified and no default profile set. Use -p <profile> or set a default.")?;
+    let rei_id = config.get_rei_id(profile.as_deref()).context(
+        "No profile specified and no default profile set. Use -p <profile> or set a default.",
+    )?;
 
     let client = KaibaClient::new(&config.base_url, api_key);
 
     let prompt_resp = client
-        .get_prompt(
-            &rei_id,
-            Some(&format),
-            include_memories,
-            context.as_deref(),
-        )
+        .get_prompt(&rei_id, Some(&format), include_memories, context.as_deref())
         .await?;
 
     if verbose {
@@ -466,7 +510,11 @@ fn cmd_config() -> Result<()> {
     println!("  Base URL: {}", config.base_url);
     println!(
         "  API Key: {}",
-        if config.api_key.is_some() { "Set".green() } else { "Not set".red() }
+        if config.api_key.is_some() {
+            "Set".green()
+        } else {
+            "Not set".red()
+        }
     );
     println!(
         "  Default Profile: {}",

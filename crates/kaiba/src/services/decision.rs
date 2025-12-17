@@ -135,10 +135,7 @@ impl DecisionMaker {
         if state.energy_level >= self.config.min_energy_learn {
             return Decision {
                 action: Action::Learn,
-                reason: format!(
-                    "Energy sufficient ({}) for learning",
-                    state.energy_level
-                ),
+                reason: format!("Energy sufficient ({}) for learning", state.energy_level),
                 context,
             };
         }

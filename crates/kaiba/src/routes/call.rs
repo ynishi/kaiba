@@ -7,11 +7,10 @@ use axum::{
 };
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::models::{
-    CallRequest, CallResponse, CallLog, MemoryReference, Memory,
-    Rei, ReiState, Tei,
+    CallLog, CallRequest, CallResponse, Memory, MemoryReference, Rei, ReiState, Tei,
 };
+use crate::AppState;
 
 /// Select Tei based on Rei's energy level
 fn select_tei<'a>(energy_level: i32, teis: &'a [Tei]) -> Option<&'a Tei> {
@@ -63,17 +62,21 @@ pub async fn call_llm(
         .fetch_optional(pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string()))?;
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei not found".to_string(),
+        ))?;
 
     // 2. Load Rei state
-    let rei_state = sqlx::query_as::<_, ReiState>(
-        "SELECT * FROM rei_states WHERE rei_id = $1"
-    )
-    .bind(rei_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei state not found".to_string()))?;
+    let rei_state = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
+        .bind(rei_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei state not found".to_string(),
+        ))?;
 
     // 3. Load requested Teis
     let teis = if payload.tei_ids.is_empty() {
@@ -114,12 +117,17 @@ pub async fn call_llm(
     }
 
     // 4. Select Tei based on energy
-    let selected_tei = select_tei(rei_state.energy_level, &teis)
-        .ok_or((axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Failed to select Tei".to_string()))?;
+    let selected_tei = select_tei(rei_state.energy_level, &teis).ok_or((
+        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        "Failed to select Tei".to_string(),
+    ))?;
 
     tracing::info!(
         "Call for Rei {} using Tei {} ({}) - Energy: {}",
-        rei.name, selected_tei.name, selected_tei.model_id, rei_state.energy_level
+        rei.name,
+        selected_tei.name,
+        selected_tei.model_id,
+        rei_state.energy_level
     );
 
     // 5. RAG: Search relevant memories if requested
@@ -141,7 +149,8 @@ pub async fn call_llm(
         format!(
             "\n\n[RAG Context - {} memories retrieved]\n{}",
             memories.len(),
-            memories.iter()
+            memories
+                .iter()
                 .map(|m| format!("- {}", m.content))
                 .collect::<Vec<_>>()
                 .join("\n")
@@ -213,7 +222,7 @@ pub async fn get_call_history(
     Path(rei_id): Path<Uuid>,
 ) -> Result<Json<Vec<CallLog>>, (axum::http::StatusCode, String)> {
     let logs = sqlx::query_as::<_, CallLog>(
-        "SELECT * FROM call_logs WHERE rei_id = $1 ORDER BY created_at DESC LIMIT 100"
+        "SELECT * FROM call_logs WHERE rei_id = $1 ORDER BY created_at DESC LIMIT 100",
     )
     .bind(rei_id)
     .fetch_all(&state.pool)
@@ -246,13 +255,10 @@ async fn search_memories_for_rag(
     };
 
     // Generate query embedding
-    let query_vector = embedding_service
-        .embed(query)
-        .await
-        .map_err(|e| {
-            tracing::warn!("Failed to generate embedding for RAG: {}", e);
-            (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+    let query_vector = embedding_service.embed(query).await.map_err(|e| {
+        tracing::warn!("Failed to generate embedding for RAG: {}", e);
+        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+    })?;
 
     // Search memories
     let limit = limit.unwrap_or(5);
@@ -280,11 +286,7 @@ async fn search_memories_for_rag(
 
 /// Build system prompt with Rei identity and memories
 fn build_system_prompt(rei: &Rei, memories: &[Memory]) -> String {
-    let mut prompt = format!(
-        "You are {}, {}.\n",
-        rei.name,
-        rei.role
-    );
+    let mut prompt = format!("You are {}, {}.\n", rei.name, rei.role);
 
     // Add manifest if present
     if let Some(manifest) = rei.manifest.as_object() {
@@ -311,5 +313,8 @@ fn build_system_prompt(rei: &Rei, memories: &[Memory]) -> String {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/kaiba/rei/:rei_id/call", post(call_llm))
-        .route("/kaiba/rei/:rei_id/calls", axum::routing::get(get_call_history))
+        .route(
+            "/kaiba/rei/:rei_id/calls",
+            axum::routing::get(get_call_history),
+        )
 }

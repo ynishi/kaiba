@@ -9,6 +9,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::models::{CreateMemoryRequest, Memory, MemoryResponse, SearchMemoriesRequest};
+use crate::services::SearchFilter;
 use crate::AppState;
 
 /// Add a memory to MemoryKai
@@ -100,12 +101,22 @@ pub async fn search_memories(
 
     let limit = payload.limit.unwrap_or(10);
 
+    // Build search filter
+    let filter = SearchFilter {
+        memory_type: payload.memory_type,
+        tags: payload.tags,
+        tags_match_mode: payload.tags_match_mode,
+        min_importance: payload.min_importance,
+    };
+
     let memories = memory_kai
-        .search_memories(&rei_id.to_string(), query_vector, limit)
+        .search_memories_with_filter(&rei_id.to_string(), query_vector, limit, filter)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(memories.into_iter().map(MemoryResponse::from).collect()))
+    Ok(Json(
+        memories.into_iter().map(MemoryResponse::from).collect(),
+    ))
 }
 
 pub fn router() -> Router<AppState> {

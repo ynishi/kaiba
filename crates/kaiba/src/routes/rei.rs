@@ -8,11 +8,11 @@ use axum::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::AppState;
 use crate::models::{
-    CreateReiRequest, UpdateReiRequest, UpdateReiStateRequest,
-    Rei, ReiState, ReiResponse, ReiStateResponse,
+    CreateReiRequest, Rei, ReiResponse, ReiState, ReiStateResponse, UpdateReiRequest,
+    UpdateReiStateRequest,
 };
+use crate::AppState;
 
 /// List all Reis
 #[utoipa::path(
@@ -34,13 +34,11 @@ pub async fn list_reis(
 
     let mut responses = Vec::new();
     for rei in reis {
-        let state = sqlx::query_as::<_, ReiState>(
-            "SELECT * FROM rei_states WHERE rei_id = $1"
-        )
-        .bind(rei.id)
-        .fetch_optional(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let state = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
+            .bind(rei.id)
+            .fetch_optional(&pool)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let state_response = state
             .map(ReiStateResponse::from)
@@ -151,15 +149,16 @@ pub async fn get_rei(
         .fetch_optional(&pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string()))?;
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei not found".to_string(),
+        ))?;
 
-    let state = sqlx::query_as::<_, ReiState>(
-        "SELECT * FROM rei_states WHERE rei_id = $1"
-    )
-    .bind(rei.id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let state = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
+        .bind(rei.id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let state_response = state
         .map(ReiStateResponse::from)
@@ -210,7 +209,10 @@ pub async fn update_rei(
         .fetch_optional(&pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string()))?;
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei not found".to_string(),
+        ))?;
 
     // Update with provided values or keep current
     let rei = sqlx::query_as::<_, Rei>(
@@ -230,13 +232,11 @@ pub async fn update_rei(
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let state = sqlx::query_as::<_, ReiState>(
-        "SELECT * FROM rei_states WHERE rei_id = $1"
-    )
-    .bind(rei.id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let state = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
+        .bind(rei.id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let state_response = state
         .map(ReiStateResponse::from)
@@ -286,7 +286,10 @@ pub async fn delete_rei(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
-        return Err((axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string()));
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei not found".to_string(),
+        ));
     }
 
     tracing::info!("Deleted Rei: {}", id);
@@ -315,14 +318,15 @@ pub async fn get_rei_state(
     State(pool): State<PgPool>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ReiStateResponse>, (axum::http::StatusCode, String)> {
-    let state = sqlx::query_as::<_, ReiState>(
-        "SELECT * FROM rei_states WHERE rei_id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei state not found".to_string()))?;
+    let state = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
+        .bind(id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei state not found".to_string(),
+        ))?;
 
     Ok(Json(state.into()))
 }
@@ -348,14 +352,15 @@ pub async fn update_rei_state(
     Json(payload): Json<UpdateReiStateRequest>,
 ) -> Result<Json<ReiStateResponse>, (axum::http::StatusCode, String)> {
     // Get current state
-    let current = sqlx::query_as::<_, ReiState>(
-        "SELECT * FROM rei_states WHERE rei_id = $1"
-    )
-    .bind(id)
-    .fetch_optional(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-    .ok_or((axum::http::StatusCode::NOT_FOUND, "Rei state not found".to_string()))?;
+    let current = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
+        .bind(id)
+        .fetch_optional(&pool)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei state not found".to_string(),
+        ))?;
 
     // Update with provided values
     let state = sqlx::query_as::<_, ReiState>(
@@ -372,7 +377,11 @@ pub async fn update_rei_state(
     .bind(payload.mood.unwrap_or(current.mood))
     .bind(payload.token_budget.unwrap_or(current.token_budget))
     .bind(payload.tokens_used.unwrap_or(current.tokens_used))
-    .bind(payload.energy_regen_per_hour.unwrap_or(current.energy_regen_per_hour))
+    .bind(
+        payload
+            .energy_regen_per_hour
+            .unwrap_or(current.energy_regen_per_hour),
+    )
     .fetch_one(&pool)
     .await
     .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
@@ -383,6 +392,12 @@ pub async fn update_rei_state(
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/kaiba/rei", get(list_reis).post(create_rei))
-        .route("/kaiba/rei/:id", get(get_rei).put(update_rei).delete(delete_rei))
-        .route("/kaiba/rei/:id/state", get(get_rei_state).put(update_rei_state))
+        .route(
+            "/kaiba/rei/:id",
+            get(get_rei).put(update_rei).delete(delete_rei),
+        )
+        .route(
+            "/kaiba/rei/:id/state",
+            get(get_rei_state).put(update_rei_state),
+        )
 }

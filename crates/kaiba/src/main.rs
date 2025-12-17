@@ -1,10 +1,4 @@
-use axum::{
-    extract::FromRef,
-    middleware,
-    routing::get,
-    Router,
-    Json,
-};
+use axum::{extract::FromRef, middleware, routing::get, Json, Router};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -17,10 +11,10 @@ mod models;
 mod routes;
 mod services;
 
-use services::qdrant::MemoryKai;
 use services::embedding::EmbeddingService;
-use services::web_search::WebSearchAgent;
+use services::qdrant::MemoryKai;
 use services::scheduler;
+use services::web_search::WebSearchAgent;
 
 /// Application state shared across all routes
 #[derive(Clone)]
@@ -78,18 +72,16 @@ async fn main(
 
     // Initialize MemoryKai (Qdrant) if configured
     let memory_kai = match (secrets.get("QDRANT_URL"), secrets.get("QDRANT_API_KEY")) {
-        (Some(url), api_key) => {
-            match MemoryKai::new(&url, api_key).await {
-                Ok(kai) => {
-                    tracing::info!("🌊 MemoryKai (記憶海) connected");
-                    Some(Arc::new(kai))
-                }
-                Err(e) => {
-                    tracing::warn!("⚠️  Failed to connect to MemoryKai: {}", e);
-                    None
-                }
+        (Some(url), api_key) => match MemoryKai::new(&url, api_key).await {
+            Ok(kai) => {
+                tracing::info!("🌊 MemoryKai (記憶海) connected");
+                Some(Arc::new(kai))
             }
-        }
+            Err(e) => {
+                tracing::warn!("⚠️  Failed to connect to MemoryKai: {}", e);
+                None
+            }
+        },
         _ => {
             tracing::warn!("⚠️  No QDRANT_URL set - MemoryKai disabled");
             None

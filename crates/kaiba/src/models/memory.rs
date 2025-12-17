@@ -16,6 +16,17 @@ pub enum MemoryType {
     Reflection,
 }
 
+/// Tag match mode for search filtering
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TagMatchMode {
+    /// Match any of the specified tags (OR)
+    #[default]
+    Any,
+    /// Match all of the specified tags (AND)
+    All,
+}
+
 impl std::fmt::Display for MemoryType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -67,9 +78,20 @@ pub struct CreateMemoryRequest {
 /// Search memories request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SearchMemoriesRequest {
+    /// Query string for semantic search
     pub query: String,
+    /// Maximum number of results (default: 10)
     pub limit: Option<usize>,
+    /// Filter by memory type (AND condition)
     pub memory_type: Option<MemoryType>,
+    /// Filter by tags
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Tag matching mode: "any" (OR) or "all" (AND), default: any
+    #[serde(default)]
+    pub tags_match_mode: TagMatchMode,
+    /// Minimum importance score (0.0 - 1.0)
+    pub min_importance: Option<f32>,
 }
 
 /// Memory response

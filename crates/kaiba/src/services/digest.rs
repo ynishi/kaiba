@@ -130,10 +130,7 @@ impl DigestService {
 
     /// Generate summary using Gemini
     async fn generate_summary(&self, memories: &[Memory]) -> Result<String, DigestError> {
-        let api_key = self
-            .gemini_api_key
-            .as_ref()
-            .ok_or(DigestError::NoApiKey)?;
+        let api_key = self.gemini_api_key.as_ref().ok_or(DigestError::NoApiKey)?;
 
         // Build content from memories
         let memory_content: String = memories

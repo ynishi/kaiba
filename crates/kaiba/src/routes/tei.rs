@@ -8,11 +8,8 @@ use axum::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use crate::models::{AssociateTeiRequest, CreateTeiRequest, Tei, TeiResponse, UpdateTeiRequest};
 use crate::AppState;
-use crate::models::{
-    CreateTeiRequest, UpdateTeiRequest, AssociateTeiRequest,
-    Tei, TeiResponse,
-};
 
 /// List all Teis
 #[utoipa::path(
@@ -96,7 +93,10 @@ pub async fn get_tei(
         .fetch_optional(&pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string()))?;
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Tei not found".to_string(),
+        ))?;
 
     Ok(Json(tei.into()))
 }
@@ -125,7 +125,10 @@ pub async fn update_tei(
         .fetch_optional(&pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string()))?;
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Tei not found".to_string(),
+        ))?;
 
     let tei = sqlx::query_as::<_, Tei>(
         r#"
@@ -138,7 +141,12 @@ pub async fn update_tei(
     )
     .bind(id)
     .bind(payload.name.unwrap_or(current.name))
-    .bind(payload.provider.map(|p| p.to_string()).unwrap_or(current.provider))
+    .bind(
+        payload
+            .provider
+            .map(|p| p.to_string())
+            .unwrap_or(current.provider),
+    )
     .bind(payload.model_id.unwrap_or(current.model_id))
     .bind(payload.is_fallback.unwrap_or(current.is_fallback))
     .bind(payload.priority.unwrap_or(current.priority))
@@ -174,7 +182,10 @@ pub async fn delete_tei(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
-        return Err((axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string()));
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Tei not found".to_string(),
+        ));
     }
 
     tracing::info!("Deleted Tei: {}", id);
@@ -206,7 +217,10 @@ pub async fn get_tei_expertise(
         .fetch_optional(&pool)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or((axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string()))?;
+        .ok_or((
+            axum::http::StatusCode::NOT_FOUND,
+            "Tei not found".to_string(),
+        ))?;
 
     Ok(Json(tei.expertise.unwrap_or(serde_json::json!(null))))
 }
@@ -228,17 +242,18 @@ pub async fn update_tei_expertise(
     Path(id): Path<Uuid>,
     Json(expertise): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let result = sqlx::query(
-        "UPDATE teis SET expertise = $2 WHERE id = $1"
-    )
-    .bind(id)
-    .bind(&expertise)
-    .execute(&pool)
-    .await
-    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let result = sqlx::query("UPDATE teis SET expertise = $2 WHERE id = $1")
+        .bind(id)
+        .bind(&expertise)
+        .execute(&pool)
+        .await
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
-        return Err((axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string()));
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Tei not found".to_string(),
+        ));
     }
 
     Ok(Json(expertise))
@@ -298,25 +313,33 @@ pub async fn associate_tei(
     Json(payload): Json<AssociateTeiRequest>,
 ) -> Result<Json<serde_json::Value>, (axum::http::StatusCode, String)> {
     // Verify Rei exists
-    let rei_exists = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM reis WHERE id = $1)")
-        .bind(rei_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let rei_exists =
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM reis WHERE id = $1)")
+            .bind(rei_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if !rei_exists {
-        return Err((axum::http::StatusCode::NOT_FOUND, "Rei not found".to_string()));
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Rei not found".to_string(),
+        ));
     }
 
     // Verify Tei exists
-    let tei_exists = sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM teis WHERE id = $1)")
-        .bind(payload.tei_id)
-        .fetch_one(&pool)
-        .await
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let tei_exists =
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM teis WHERE id = $1)")
+            .bind(payload.tei_id)
+            .fetch_one(&pool)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if !tei_exists {
-        return Err((axum::http::StatusCode::NOT_FOUND, "Tei not found".to_string()));
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Tei not found".to_string(),
+        ));
     }
 
     // Create association (ignore if already exists)
@@ -368,7 +391,10 @@ pub async fn disassociate_tei(
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     if result.rows_affected() == 0 {
-        return Err((axum::http::StatusCode::NOT_FOUND, "Association not found".to_string()));
+        return Err((
+            axum::http::StatusCode::NOT_FOUND,
+            "Association not found".to_string(),
+        ));
     }
 
     Ok(Json(serde_json::json!({
@@ -381,9 +407,18 @@ pub fn router() -> Router<AppState> {
     Router::new()
         // Tei CRUD
         .route("/kaiba/tei", get(list_teis).post(create_tei))
-        .route("/kaiba/tei/:id", get(get_tei).put(update_tei).delete(delete_tei))
-        .route("/kaiba/tei/:id/expertise", get(get_tei_expertise).put(update_tei_expertise))
+        .route(
+            "/kaiba/tei/:id",
+            get(get_tei).put(update_tei).delete(delete_tei),
+        )
+        .route(
+            "/kaiba/tei/:id/expertise",
+            get(get_tei_expertise).put(update_tei_expertise),
+        )
         // Rei-Tei associations
-        .route("/kaiba/rei/:rei_id/teis", get(list_rei_teis).post(associate_tei))
+        .route(
+            "/kaiba/rei/:rei_id/teis",
+            get(list_rei_teis).post(associate_tei),
+        )
         .route("/kaiba/rei/:rei_id/teis/:tei_id", delete(disassociate_tei))
 }

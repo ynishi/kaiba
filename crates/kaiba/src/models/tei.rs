@@ -43,12 +43,12 @@ impl std::str::FromStr for Provider {
 pub struct Tei {
     pub id: Uuid,
     pub name: String,
-    pub provider: String,  // Stored as string in DB
+    pub provider: String, // Stored as string in DB
     pub model_id: String,
     pub is_fallback: bool,
     pub priority: i32,
     pub config: serde_json::Value,
-    pub expertise: Option<serde_json::Value>,  // Serialized Expertise
+    pub expertise: Option<serde_json::Value>, // Serialized Expertise
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

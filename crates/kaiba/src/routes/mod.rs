@@ -7,11 +7,11 @@
 //! - /kaiba/search - Web search (Gemini)
 //! - /kaiba/rei/:id/learn - Self-learning (自己活動)
 
-pub mod rei;
-pub mod tei;
 pub mod call;
-pub mod memory;
-pub mod search;
 pub mod learning;
+pub mod memory;
 pub mod prompt;
+pub mod rei;
+pub mod search;
 pub mod swagger;
+pub mod tei;

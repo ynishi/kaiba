@@ -5,7 +5,7 @@
 //! 2. Decide action (Learn, Digest, Rest)
 //! 3. Execute action
 
-use crate::models::{Rei, ReiState, MemoryType};
+use crate::models::{MemoryType, Rei, ReiState};
 use crate::services::decision::{Action, DecisionMaker};
 use crate::services::digest::DigestService;
 use crate::services::embedding::EmbeddingService;
@@ -122,13 +122,11 @@ impl AutonomousScheduler {
     /// Process a single Rei - decide and execute action
     async fn process_rei(&self, rei: &Rei) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // Get Rei state
-        let state = sqlx::query_as::<_, ReiState>(
-            "SELECT * FROM rei_states WHERE rei_id = $1"
-        )
-        .bind(rei.id)
-        .fetch_optional(&self.pool)
-        .await?
-        .ok_or("Rei state not found")?;
+        let state = sqlx::query_as::<_, ReiState>("SELECT * FROM rei_states WHERE rei_id = $1")
+            .bind(rei.id)
+            .fetch_optional(&self.pool)
+            .await?
+            .ok_or("Rei state not found")?;
 
         // Count learning memories (simplified - count recent learnings)
         let memories_count = self.count_learning_memories(rei.id).await.unwrap_or(0);
@@ -161,7 +159,10 @@ impl AutonomousScheduler {
     }
 
     /// Execute learning action
-    async fn execute_learn(&self, rei_id: Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute_learn(
+        &self,
+        rei_id: Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let service = SelfLearningService::new(
             self.pool.clone(),
             self.memory_kai.clone(),
@@ -187,7 +188,10 @@ impl AutonomousScheduler {
     }
 
     /// Execute digest action
-    async fn execute_digest(&self, rei_id: Uuid) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    async fn execute_digest(
+        &self,
+        rei_id: Uuid,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let service = DigestService::new(
             self.pool.clone(),
             self.memory_kai.clone(),
@@ -208,10 +212,12 @@ impl AutonomousScheduler {
         }
 
         // Reduce energy for digest
-        sqlx::query("UPDATE rei_states SET energy_level = GREATEST(0, energy_level - 20) WHERE rei_id = $1")
-            .bind(rei_id)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE rei_states SET energy_level = GREATEST(0, energy_level - 20) WHERE rei_id = $1",
+        )
+        .bind(rei_id)
+        .execute(&self.pool)
+        .await?;
 
         Ok(())
     }

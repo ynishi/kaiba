@@ -1,15 +1,11 @@
 //! Search Routes - Web search via Gemini
 
-use axum::{
-    extract::State,
-    routing::post,
-    Json, Router,
-};
+use axum::{extract::State, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::services::web_search::{WebSearchReference, WebSearchResponse};
 use crate::AppState;
-use crate::services::web_search::{WebSearchResponse, WebSearchReference};
 
 /// Search request
 #[derive(Debug, Deserialize, ToSchema)]
@@ -61,12 +57,15 @@ pub async fn web_search(
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    tracing::info!("🔍 WebSearch: {} -> {} references", payload.query, result.references.len());
+    tracing::info!(
+        "🔍 WebSearch: {} -> {} references",
+        payload.query,
+        result.references.len()
+    );
 
     Ok(Json(result.into()))
 }
 
 pub fn router() -> Router<AppState> {
-    Router::new()
-        .route("/kaiba/search", post(web_search))
+    Router::new().route("/kaiba/search", post(web_search))
 }

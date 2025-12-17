@@ -5,24 +5,48 @@
 use utoipa::OpenApi;
 
 use crate::models::{
-    // Rei models
-    Rei, ReiState, CreateReiRequest, UpdateReiRequest, ReiResponse, ReiStateResponse, UpdateReiStateRequest,
-    // Tei models
-    Provider, Tei, CreateTeiRequest, UpdateTeiRequest, TeiResponse, AssociateTeiRequest,
+    AssociateTeiRequest,
+    CallContext,
+    CallLog,
+    CallRequest,
+    CallResponse,
+    CreateMemoryRequest,
+    CreateReiRequest,
+    CreateTeiRequest,
+    Memory,
+    MemoryReference,
+    MemoryResponse,
     // Memory models
-    MemoryType, Memory, CreateMemoryRequest, SearchMemoriesRequest, MemoryResponse,
-    // Call models
-    TaskHealth, CallLog, CallContext, CallRequest, MemoryReference, CallResponse,
+    MemoryType,
     // Prompt models
-    PromptFormat, PromptResponse, ReiSummary,
+    PromptFormat,
+    PromptResponse,
+    // Tei models
+    Provider,
+    // Rei models
+    Rei,
+    ReiResponse,
+    ReiState,
+    ReiStateResponse,
+    ReiSummary,
+    SearchMemoriesRequest,
+    // Call models
+    TaskHealth,
+    Tei,
+    TeiResponse,
+    UpdateReiRequest,
+    UpdateReiStateRequest,
+    UpdateTeiRequest,
 };
 
-use crate::services::web_search::WebSearchReference;
 use crate::services::self_learning::LearningSession;
+use crate::services::web_search::WebSearchReference;
 
 // Local route types
+use super::learning::{
+    BatchLearnResponse, LearnRequest, LearnResponse, RechargeRequest, RechargeResponse,
+};
 use super::search::{SearchRequest, SearchResult};
-use super::learning::{LearnRequest, LearnResponse, BatchLearnResponse, RechargeRequest, RechargeResponse};
 
 #[derive(OpenApi)]
 #[openapi(

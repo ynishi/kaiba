@@ -40,7 +40,10 @@ impl EmbeddingService {
     }
 
     /// Generate embedding for text
-    pub async fn embed(&self, text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn embed(
+        &self,
+        text: &str,
+    ) -> Result<Vec<f32>, Box<dyn std::error::Error + Send + Sync>> {
         let request = EmbeddingRequest {
             input: text.to_string(),
             model: self.model.clone(),
@@ -71,7 +74,10 @@ impl EmbeddingService {
     }
 
     /// Generate embeddings for multiple texts
-    pub async fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
+    pub async fn embed_batch(
+        &self,
+        texts: &[String],
+    ) -> Result<Vec<Vec<f32>>, Box<dyn std::error::Error + Send + Sync>> {
         let mut embeddings = Vec::with_capacity(texts.len());
         for text in texts {
             embeddings.push(self.embed(text).await?);

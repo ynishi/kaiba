@@ -94,7 +94,8 @@ impl KaibaClient {
     /// List all Reis
     pub async fn list_reis(&self) -> Result<Vec<ReiResponse>> {
         let url = format!("{}/kaiba/rei", self.base_url);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()
@@ -107,8 +108,7 @@ impl KaibaClient {
             bail!("API error ({}): {}", status, body);
         }
 
-        let reis: Vec<ReiResponse> = resp.json().await
-            .context("Failed to parse response")?;
+        let reis: Vec<ReiResponse> = resp.json().await.context("Failed to parse response")?;
 
         Ok(reis)
     }
@@ -116,7 +116,8 @@ impl KaibaClient {
     /// Get a specific Rei
     pub async fn get_rei(&self, rei_id: &str) -> Result<ReiResponse> {
         let url = format!("{}/kaiba/rei/{}", self.base_url, rei_id);
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()
@@ -129,8 +130,7 @@ impl KaibaClient {
             bail!("API error ({}): {}", status, body);
         }
 
-        let rei: ReiResponse = resp.json().await
-            .context("Failed to parse response")?;
+        let rei: ReiResponse = resp.json().await.context("Failed to parse response")?;
 
         Ok(rei)
     }
@@ -153,7 +153,8 @@ impl KaibaClient {
             tags: tags.to_vec(),
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request)
@@ -167,8 +168,7 @@ impl KaibaClient {
             bail!("API error ({}): {}", status, body);
         }
 
-        let memory: MemoryResponse = resp.json().await
-            .context("Failed to parse response")?;
+        let memory: MemoryResponse = resp.json().await.context("Failed to parse response")?;
 
         Ok(memory)
     }
@@ -198,7 +198,8 @@ impl KaibaClient {
             url = format!("{}?{}", url, params.join("&"));
         }
 
-        let resp = self.client
+        let resp = self
+            .client
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .send()
@@ -211,8 +212,7 @@ impl KaibaClient {
             bail!("API error ({}): {}", status, body);
         }
 
-        let prompt: PromptResponse = resp.json().await
-            .context("Failed to parse response")?;
+        let prompt: PromptResponse = resp.json().await.context("Failed to parse response")?;
 
         Ok(prompt)
     }
@@ -231,7 +231,8 @@ impl KaibaClient {
             limit,
         };
 
-        let resp = self.client
+        let resp = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request)
@@ -245,8 +246,8 @@ impl KaibaClient {
             bail!("API error ({}): {}", status, body);
         }
 
-        let memories: Vec<MemoryResponse> = resp.json().await
-            .context("Failed to parse response")?;
+        let memories: Vec<MemoryResponse> =
+            resp.json().await.context("Failed to parse response")?;
 
         Ok(memories)
     }
