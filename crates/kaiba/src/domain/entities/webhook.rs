@@ -57,6 +57,8 @@ pub enum WebhookEventType {
     SearchCompleted,
     /// Learning session completed (自律学習完了)
     LearningCompleted,
+    /// Digest completed - knowledge consolidated into expertise (知識統合完了)
+    DigestCompleted,
     /// Custom event (user-defined)
     Custom(String),
     /// All events
@@ -103,6 +105,7 @@ pub enum DeliveryStatus {
 
 impl ReiWebhook {
     /// Create a new webhook with sensible defaults
+    /// Default event is DigestCompleted (consolidated knowledge notification)
     pub fn new(rei_id: Uuid, name: String, url: String) -> Self {
         let now = Utc::now();
         Self {
@@ -112,7 +115,7 @@ impl ReiWebhook {
             url,
             secret: None,
             enabled: true,
-            events: vec![WebhookEventType::All],
+            events: vec![WebhookEventType::DigestCompleted],
             headers: serde_json::json!({}),
             payload_format: None,
             max_retries: 3,
@@ -220,6 +223,7 @@ impl std::fmt::Display for WebhookEventType {
             Self::MemoryAdded => write!(f, "memory_added"),
             Self::SearchCompleted => write!(f, "search_completed"),
             Self::LearningCompleted => write!(f, "learning_completed"),
+            Self::DigestCompleted => write!(f, "digest_completed"),
             Self::Custom(name) => write!(f, "custom:{}", name),
             Self::All => write!(f, "all"),
         }

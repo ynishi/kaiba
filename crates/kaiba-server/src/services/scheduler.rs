@@ -9,7 +9,7 @@
 use crate::adapters::{HttpWebhook, PgReiWebhookRepository};
 use crate::models::{MemoryType, Rei, ReiState};
 use crate::services::decision::{Action, DecisionMaker};
-use crate::services::digest::DigestService;
+use crate::services::digest::{DigestResult, DigestService};
 use crate::services::embedding::EmbeddingService;
 use crate::services::qdrant::MemoryKai;
 use crate::services::self_learning::{LearningSession, SelfLearningService};
@@ -263,6 +263,67 @@ impl AutonomousScheduler {
         }
     }
 
+    /// Dispatch webhooks for digest completion
+    async fn dispatch_digest_webhooks(&self, result: &DigestResult) {
+        let (Some(webhook_repo), Some(http_webhook)) = (&self.webhook_repo, &self.http_webhook)
+        else {
+            return;
+        };
+
+        // Find webhooks subscribed to DigestCompleted event
+        let webhooks = match webhook_repo
+            .find_by_rei_and_event(result.rei_id, &WebhookEventType::DigestCompleted)
+            .await
+        {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::warn!("  ⚠️  Failed to find webhooks: {}", e);
+                return;
+            }
+        };
+
+        if webhooks.is_empty() {
+            return;
+        }
+
+        // Build payload from DigestResult
+        let payload = WebhookPayload::new(
+            WebhookEventType::DigestCompleted,
+            result.rei_id,
+            serde_json::json!({
+                "memories_processed": result.memories_processed,
+                "expertise_created": result.expertise_created,
+                "summary": result.summary,
+            }),
+        );
+
+        // Deliver to each webhook
+        for webhook in webhooks {
+            tracing::info!("  📤 Dispatching digest webhook: {}", webhook.name);
+
+            match http_webhook.deliver_with_retry(&webhook, &payload).await {
+                Ok(delivery) => {
+                    // Save delivery record
+                    if let Err(e) = webhook_repo.save_delivery(&delivery).await {
+                        tracing::warn!("  ⚠️  Failed to save delivery record: {}", e);
+                    }
+
+                    if delivery.status == kaiba::DeliveryStatus::Success {
+                        tracing::info!("  ✅ Digest webhook delivered successfully");
+                    } else {
+                        tracing::warn!(
+                            "  ❌ Digest webhook delivery failed: {:?}",
+                            delivery.response_body
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("  ❌ Digest webhook delivery error: {}", e);
+                }
+            }
+        }
+    }
+
     /// Execute digest action
     async fn execute_digest(
         &self,
@@ -281,6 +342,11 @@ impl AutonomousScheduler {
                     "  📝 Digested: {} memories -> expertise",
                     result.memories_processed
                 );
+
+                // Dispatch webhooks for digest completion (only if expertise was created)
+                if result.expertise_created {
+                    self.dispatch_digest_webhooks(&result).await;
+                }
             }
             Err(e) => {
                 tracing::warn!("  ❌ Digest failed: {}", e);
