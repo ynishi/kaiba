@@ -32,6 +32,9 @@ pub struct ReiWebhook {
     /// Custom headers to include (e.g., Authorization)
     #[serde(default)]
     pub headers: serde_json::Value,
+    /// Payload format transformation (e.g., "github_issue")
+    #[serde(default)]
+    pub payload_format: Option<String>,
     /// Retry configuration
     pub max_retries: i32,
     /// Timeout in milliseconds
@@ -52,6 +55,8 @@ pub enum WebhookEventType {
     MemoryAdded,
     /// Web search was performed
     SearchCompleted,
+    /// Learning session completed (自律学習完了)
+    LearningCompleted,
     /// Custom event (user-defined)
     Custom(String),
     /// All events
@@ -109,11 +114,18 @@ impl ReiWebhook {
             enabled: true,
             events: vec![WebhookEventType::All],
             headers: serde_json::json!({}),
+            payload_format: None,
             max_retries: 3,
             timeout_ms: 30000,
             created_at: now,
             updated_at: now,
         }
+    }
+
+    /// Set payload format (e.g., "github_issue")
+    pub fn with_payload_format(mut self, format: String) -> Self {
+        self.payload_format = Some(format);
+        self
     }
 
     /// Create with a signing secret for HMAC-SHA256 verification
@@ -207,6 +219,7 @@ impl std::fmt::Display for WebhookEventType {
             Self::StateChanged => write!(f, "state_changed"),
             Self::MemoryAdded => write!(f, "memory_added"),
             Self::SearchCompleted => write!(f, "search_completed"),
+            Self::LearningCompleted => write!(f, "learning_completed"),
             Self::Custom(name) => write!(f, "custom:{}", name),
             Self::All => write!(f, "all"),
         }

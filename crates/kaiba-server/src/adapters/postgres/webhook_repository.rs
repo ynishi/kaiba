@@ -33,6 +33,7 @@ struct ReiWebhookRow {
     headers: serde_json::Value,
     max_retries: i32,
     timeout_ms: i32,
+    payload_format: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
     updated_at: chrono::DateTime<chrono::Utc>,
 }
@@ -53,6 +54,7 @@ impl From<ReiWebhookRow> for ReiWebhook {
             headers: row.headers,
             max_retries: row.max_retries,
             timeout_ms: row.timeout_ms,
+            payload_format: row.payload_format,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
@@ -173,7 +175,7 @@ impl ReiWebhookRepository for PgReiWebhookRepository {
                 r#"
                 UPDATE rei_webhooks
                 SET name = $2, url = $3, secret = $4, enabled = $5, events = $6,
-                    headers = $7, max_retries = $8, timeout_ms = $9, updated_at = NOW()
+                    headers = $7, max_retries = $8, timeout_ms = $9, payload_format = $10, updated_at = NOW()
                 WHERE id = $1
                 RETURNING *
                 "#,
@@ -187,14 +189,15 @@ impl ReiWebhookRepository for PgReiWebhookRepository {
             .bind(&webhook.headers)
             .bind(webhook.max_retries)
             .bind(webhook.timeout_ms)
+            .bind(&webhook.payload_format)
             .fetch_one(&self.pool)
             .await
         } else {
             // Insert
             sqlx::query_as::<_, ReiWebhookRow>(
                 r#"
-                INSERT INTO rei_webhooks (id, rei_id, name, url, secret, enabled, events, headers, max_retries, timeout_ms)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                INSERT INTO rei_webhooks (id, rei_id, name, url, secret, enabled, events, headers, max_retries, timeout_ms, payload_format)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 RETURNING *
                 "#,
             )
@@ -208,6 +211,7 @@ impl ReiWebhookRepository for PgReiWebhookRepository {
             .bind(&webhook.headers)
             .bind(webhook.max_retries)
             .bind(webhook.timeout_ms)
+            .bind(&webhook.payload_format)
             .fetch_one(&self.pool)
             .await
         }

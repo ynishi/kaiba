@@ -11,6 +11,8 @@ use kaiba::{
     WebhookPayload,
 };
 
+use crate::adapters::formatters;
+
 /// HTTP implementation of TeiWebhook
 pub struct HttpWebhook {
     client: Client,
@@ -48,8 +50,11 @@ impl TeiWebhook for HttpWebhook {
     ) -> Result<WebhookDelivery, DomainError> {
         let mut delivery = WebhookDelivery::new(webhook.id, payload.clone());
 
+        // Format payload based on webhook configuration
+        let formatted = formatters::format_payload(webhook.payload_format.as_deref(), payload);
+
         // Serialize payload
-        let body = serde_json::to_vec(payload).map_err(|e| {
+        let body = serde_json::to_vec(&formatted).map_err(|e| {
             DomainError::ExternalService(format!("Failed to serialize payload: {e}"))
         })?;
 

@@ -84,6 +84,9 @@ pub async fn create_webhook(
     if let Some(timeout_ms) = payload.timeout_ms {
         webhook.timeout_ms = timeout_ms;
     }
+    if let Some(payload_format) = payload.payload_format {
+        webhook.payload_format = Some(payload_format);
+    }
 
     let saved = state
         .webhook_repo
@@ -198,6 +201,9 @@ pub async fn update_webhook(
     if let Some(timeout_ms) = payload.timeout_ms {
         webhook.timeout_ms = timeout_ms;
     }
+    if let Some(payload_format) = payload.payload_format {
+        webhook.payload_format = Some(payload_format);
+    }
 
     let saved = state
         .webhook_repo
@@ -293,6 +299,7 @@ pub async fn trigger_webhook(
             "state_changed" => WebhookEventType::StateChanged,
             "memory_added" => WebhookEventType::MemoryAdded,
             "search_completed" => WebhookEventType::SearchCompleted,
+            "learning_completed" => WebhookEventType::LearningCompleted,
             s => WebhookEventType::Custom(s.to_string()),
         })
         .unwrap_or(WebhookEventType::Custom("test".to_string()));

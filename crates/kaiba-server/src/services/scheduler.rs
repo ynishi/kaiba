@@ -4,14 +4,17 @@
 //! 1. Regenerate energy
 //! 2. Decide action (Learn, Digest, Rest)
 //! 3. Execute action
+//! 4. Dispatch webhooks on learning completion
 
+use crate::adapters::{HttpWebhook, PgReiWebhookRepository};
 use crate::models::{MemoryType, Rei, ReiState};
 use crate::services::decision::{Action, DecisionMaker};
 use crate::services::digest::DigestService;
 use crate::services::embedding::EmbeddingService;
 use crate::services::qdrant::MemoryKai;
-use crate::services::self_learning::SelfLearningService;
+use crate::services::self_learning::{LearningSession, SelfLearningService};
 use crate::services::web_search::WebSearchAgent;
+use kaiba::{ReiWebhookRepository, TeiWebhook, WebhookEventType, WebhookPayload};
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -44,6 +47,9 @@ pub struct AutonomousScheduler {
     web_search: WebSearchAgent,
     gemini_api_key: Option<String>,
     config: SchedulerConfig,
+    // Webhook support
+    webhook_repo: Option<Arc<PgReiWebhookRepository>>,
+    http_webhook: Option<Arc<HttpWebhook>>,
 }
 
 impl AutonomousScheduler {
@@ -55,6 +61,8 @@ impl AutonomousScheduler {
         web_search: WebSearchAgent,
         gemini_api_key: Option<String>,
         config: Option<SchedulerConfig>,
+        webhook_repo: Option<Arc<PgReiWebhookRepository>>,
+        http_webhook: Option<Arc<HttpWebhook>>,
     ) -> Self {
         Self {
             pool,
@@ -63,6 +71,8 @@ impl AutonomousScheduler {
             web_search,
             gemini_api_key,
             config: config.unwrap_or_default(),
+            webhook_repo,
+            http_webhook,
         }
     }
 
@@ -178,6 +188,9 @@ impl AutonomousScheduler {
                     session.queries_generated.len(),
                     session.memories_stored
                 );
+
+                // Dispatch webhooks for learning completion
+                self.dispatch_learning_webhooks(&session).await;
             }
             Err(e) => {
                 tracing::warn!("  ❌ Learning failed: {}", e);
@@ -185,6 +198,69 @@ impl AutonomousScheduler {
         }
 
         Ok(())
+    }
+
+    /// Dispatch webhooks for learning completion
+    async fn dispatch_learning_webhooks(&self, session: &LearningSession) {
+        let (Some(webhook_repo), Some(http_webhook)) = (&self.webhook_repo, &self.http_webhook)
+        else {
+            return;
+        };
+
+        // Find webhooks subscribed to LearningCompleted event
+        let webhooks = match webhook_repo
+            .find_by_rei_and_event(session.rei_id, &WebhookEventType::LearningCompleted)
+            .await
+        {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::warn!("  ⚠️  Failed to find webhooks: {}", e);
+                return;
+            }
+        };
+
+        if webhooks.is_empty() {
+            return;
+        }
+
+        // Build payload from LearningSession
+        let payload = WebhookPayload::new(
+            WebhookEventType::LearningCompleted,
+            session.rei_id,
+            serde_json::json!({
+                "rei_name": session.rei_name,
+                "queries_generated": session.queries_generated,
+                "searches_completed": session.searches_completed,
+                "memories_stored": session.memories_stored,
+                "errors": session.errors,
+            }),
+        );
+
+        // Deliver to each webhook
+        for webhook in webhooks {
+            tracing::info!("  📤 Dispatching webhook: {}", webhook.name);
+
+            match http_webhook.deliver_with_retry(&webhook, &payload).await {
+                Ok(delivery) => {
+                    // Save delivery record
+                    if let Err(e) = webhook_repo.save_delivery(&delivery).await {
+                        tracing::warn!("  ⚠️  Failed to save delivery record: {}", e);
+                    }
+
+                    if delivery.status == kaiba::DeliveryStatus::Success {
+                        tracing::info!("  ✅ Webhook delivered successfully");
+                    } else {
+                        tracing::warn!(
+                            "  ❌ Webhook delivery failed: {:?}",
+                            delivery.response_body
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("  ❌ Webhook delivery error: {}", e);
+                }
+            }
+        }
     }
 
     /// Execute digest action
@@ -277,6 +353,8 @@ pub fn maybe_start_scheduler(
     web_search: Option<WebSearchAgent>,
     gemini_api_key: Option<String>,
     interval_secs: Option<u64>,
+    webhook_repo: Option<Arc<PgReiWebhookRepository>>,
+    http_webhook: Option<Arc<HttpWebhook>>,
 ) -> Option<tokio::task::JoinHandle<()>> {
     let memory_kai = memory_kai?;
     let embedding = embedding?;
@@ -294,6 +372,8 @@ pub fn maybe_start_scheduler(
         web_search,
         gemini_api_key,
         Some(config),
+        webhook_repo,
+        http_webhook,
     );
 
     Some(scheduler.start())

@@ -26,6 +26,8 @@ pub struct CreateWebhookRequest {
     pub max_retries: Option<i32>,
     /// Timeout in milliseconds (default: 30000)
     pub timeout_ms: Option<i32>,
+    /// Payload format transformation (e.g., "github_issue")
+    pub payload_format: Option<String>,
 }
 
 /// Request to update a webhook
@@ -39,6 +41,7 @@ pub struct UpdateWebhookRequest {
     pub headers: Option<serde_json::Value>,
     pub max_retries: Option<i32>,
     pub timeout_ms: Option<i32>,
+    pub payload_format: Option<String>,
 }
 
 /// Webhook response
@@ -52,6 +55,7 @@ pub struct WebhookResponse {
     pub events: Vec<String>,
     pub max_retries: i32,
     pub timeout_ms: i32,
+    pub payload_format: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -89,6 +93,7 @@ impl WebhookResponse {
             events: webhook.events.iter().map(|e| e.to_string()).collect(),
             max_retries: webhook.max_retries,
             timeout_ms: webhook.timeout_ms,
+            payload_format: webhook.payload_format,
             created_at: webhook.created_at,
             updated_at: webhook.updated_at,
         }
@@ -126,6 +131,7 @@ pub fn parse_event_types(events: Option<Vec<String>>) -> Vec<WebhookEventType> {
                     "state_changed" => WebhookEventType::StateChanged,
                     "memory_added" => WebhookEventType::MemoryAdded,
                     "search_completed" => WebhookEventType::SearchCompleted,
+                    "learning_completed" => WebhookEventType::LearningCompleted,
                     "all" => WebhookEventType::All,
                     s if s.starts_with("custom:") => {
                         WebhookEventType::Custom(s.strip_prefix("custom:").unwrap().to_string())

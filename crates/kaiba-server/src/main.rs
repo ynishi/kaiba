@@ -155,6 +155,8 @@ async fn main(
         web_search,
         gemini_api_key,
         scheduler_interval,
+        Some(state.webhook_repo.clone()),
+        Some(state.http_webhook.clone()),
     ) {
         tracing::info!("📅 Autonomous scheduler started");
     } else {

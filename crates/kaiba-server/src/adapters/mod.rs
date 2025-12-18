@@ -2,6 +2,7 @@
 //!
 //! Implementations of domain ports for external systems.
 
+pub mod formatters;
 pub mod postgres;
 pub mod webhook;
 
