@@ -7,6 +7,7 @@
 //! - Call: LLM invocation record
 //! - Prompt: Prompt templates
 //! - Message: Platform integration message
+//! - Webhook: Outbound webhook for external actions
 
 mod call;
 mod memory;
@@ -14,6 +15,7 @@ mod message;
 mod prompt;
 mod rei;
 mod tei;
+mod webhook;
 
 pub use call::*;
 pub use memory::*;
@@ -21,3 +23,4 @@ pub use message::*;
 pub use prompt::*;
 pub use rei::*;
 pub use tei::*;
+pub use webhook::*;

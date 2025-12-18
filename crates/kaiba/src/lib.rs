@@ -27,8 +27,9 @@ pub mod ports;
 
 // Re-export commonly used types
 pub use domain::{
-    Call, DomainError, Memory, MemoryType, Message, Prompt, Provider, Rei, ReiState, ReiTei,
-    TagMatchMode, Tei,
+    Call, DeliveryStatus, DomainError, Memory, MemoryType, Message, Prompt, Provider, Rei,
+    ReiState, ReiTei, ReiWebhook, TagMatchMode, Tei, WebhookDelivery, WebhookEventType,
+    WebhookPayload,
 };
 pub use ports::{
     // Tei Services (体 - execution interfaces)
@@ -43,10 +44,13 @@ pub use ports::{
     MemorySearchFilter,
     MessageRole,
     ReiRepository,
+    ReiWebhookRepository,
     TeiIntegration,
     TeiLlmProvider,
     TeiRepository,
+    TeiWebhook,
     TokenUsage,
     WebSearchResult,
     WebSearchService,
+    WebhookDeliveryConfig,
 };

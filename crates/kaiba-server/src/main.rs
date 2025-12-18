@@ -13,7 +13,7 @@ mod models;
 mod routes;
 mod services;
 
-use adapters::{PgReiRepository, PgTeiRepository};
+use adapters::{HttpWebhook, PgReiRepository, PgReiWebhookRepository, PgTeiRepository};
 use application::{ReiService, TeiService};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
@@ -33,6 +33,8 @@ pub struct AppState {
     pub memory_kai: Option<Arc<MemoryKai>>,
     pub embedding: Option<EmbeddingService>,
     pub web_search: Option<WebSearchAgent>,
+    pub webhook_repo: Arc<PgReiWebhookRepository>,
+    pub http_webhook: Arc<HttpWebhook>,
 }
 
 // Allow extracting PgPool directly from AppState (for backward compatibility)
@@ -121,8 +123,12 @@ async fn main(
     // Initialize application services
     let rei_repo = Arc::new(PgReiRepository::new(pool.clone()));
     let tei_repo = Arc::new(PgTeiRepository::new(pool.clone()));
+    let webhook_repo = Arc::new(PgReiWebhookRepository::new(pool.clone()));
     let rei_service = Arc::new(ReiService::new(rei_repo));
     let tei_service = Arc::new(TeiService::new(tei_repo));
+    let http_webhook = Arc::new(HttpWebhook::new());
+
+    tracing::info!("🔔 Webhook service initialized");
 
     // Create application state
     let state = AppState {
@@ -132,6 +138,8 @@ async fn main(
         memory_kai: memory_kai.clone(),
         embedding: embedding.clone(),
         web_search: web_search.clone(),
+        webhook_repo,
+        http_webhook,
     };
 
     // Start autonomous scheduler (1 hour interval)
@@ -162,6 +170,7 @@ async fn main(
         .merge(routes::search::router())
         .merge(routes::learning::router())
         .merge(routes::prompt::router())
+        .merge(routes::webhook::router())
         .layer(middleware::from_fn(auth::auth_middleware));
 
     // OpenAPI documentation

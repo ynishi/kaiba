@@ -8,8 +8,10 @@
 pub mod integration;
 pub mod repositories;
 pub mod services;
+pub mod webhook;
 
 // Re-exports
 pub use integration::*;
 pub use repositories::*;
 pub use services::*;
+pub use webhook::*;

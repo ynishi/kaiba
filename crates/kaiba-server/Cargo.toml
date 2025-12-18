@@ -60,3 +60,8 @@ async-trait = "0.1"
 # OpenAPI
 utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
+
+# HMAC signing for webhooks
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
