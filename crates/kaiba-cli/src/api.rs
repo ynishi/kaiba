@@ -74,6 +74,59 @@ pub struct SearchMemoriesRequest {
     pub limit: Option<usize>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct WebhookResponse {
+    pub id: Uuid,
+    pub rei_id: Uuid,
+    pub name: String,
+    pub url: String,
+    pub enabled: bool,
+    pub events: Vec<String>,
+    pub max_retries: i32,
+    pub timeout_ms: i32,
+    pub payload_format: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateWebhookRequest {
+    pub name: String,
+    pub url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_format: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdateWebhookRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub payload_format: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WebhookDeliveryResponse {
+    pub id: Uuid,
+    pub webhook_id: Uuid,
+    pub event: String,
+    pub status: String,
+    pub status_code: Option<i32>,
+    pub attempts: i32,
+    pub created_at: String,
+    pub completed_at: Option<String>,
+}
+
 impl KaibaClient {
     /// Create a new API client
     pub fn new(base_url: &str, api_key: &str) -> Self {
@@ -250,5 +303,203 @@ impl KaibaClient {
             resp.json().await.context("Failed to parse response")?;
 
         Ok(memories)
+    }
+
+    /// List webhooks for a Rei
+    pub async fn list_webhooks(&self, rei_id: &str) -> Result<Vec<WebhookResponse>> {
+        let url = format!("{}/kaiba/rei/{}/webhooks", self.base_url, rei_id);
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let webhooks: Vec<WebhookResponse> =
+            resp.json().await.context("Failed to parse response")?;
+
+        Ok(webhooks)
+    }
+
+    /// Create a webhook
+    pub async fn create_webhook(
+        &self,
+        rei_id: &str,
+        name: &str,
+        url: &str,
+        events: Option<Vec<String>>,
+        payload_format: Option<String>,
+    ) -> Result<WebhookResponse> {
+        let api_url = format!("{}/kaiba/rei/{}/webhooks", self.base_url, rei_id);
+
+        let request = CreateWebhookRequest {
+            name: name.to_string(),
+            url: url.to_string(),
+            secret: None,
+            events,
+            payload_format,
+        };
+
+        let resp = self
+            .client
+            .post(&api_url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let webhook: WebhookResponse = resp.json().await.context("Failed to parse response")?;
+
+        Ok(webhook)
+    }
+
+    /// Update a webhook
+    pub async fn update_webhook(
+        &self,
+        rei_id: &str,
+        webhook_id: &str,
+        name: Option<String>,
+        url: Option<String>,
+        enabled: Option<bool>,
+        events: Option<Vec<String>>,
+        payload_format: Option<String>,
+    ) -> Result<WebhookResponse> {
+        let api_url = format!(
+            "{}/kaiba/rei/{}/webhooks/{}",
+            self.base_url, rei_id, webhook_id
+        );
+
+        let request = UpdateWebhookRequest {
+            name,
+            url,
+            enabled,
+            events,
+            payload_format,
+        };
+
+        let resp = self
+            .client
+            .put(&api_url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let webhook: WebhookResponse = resp.json().await.context("Failed to parse response")?;
+
+        Ok(webhook)
+    }
+
+    /// Delete a webhook
+    pub async fn delete_webhook(&self, rei_id: &str, webhook_id: &str) -> Result<()> {
+        let url = format!(
+            "{}/kaiba/rei/{}/webhooks/{}",
+            self.base_url, rei_id, webhook_id
+        );
+
+        let resp = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        Ok(())
+    }
+
+    /// Trigger a webhook (for testing)
+    pub async fn trigger_webhook(
+        &self,
+        rei_id: &str,
+        webhook_id: &str,
+        event: Option<String>,
+    ) -> Result<WebhookDeliveryResponse> {
+        let url = format!(
+            "{}/kaiba/rei/{}/webhooks/{}/trigger",
+            self.base_url, rei_id, webhook_id
+        );
+
+        let payload = serde_json::json!({
+            "event": event,
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&payload)
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let delivery: WebhookDeliveryResponse =
+            resp.json().await.context("Failed to parse response")?;
+
+        Ok(delivery)
+    }
+
+    /// List webhook deliveries
+    pub async fn list_deliveries(
+        &self,
+        rei_id: &str,
+        webhook_id: &str,
+    ) -> Result<Vec<WebhookDeliveryResponse>> {
+        let url = format!(
+            "{}/kaiba/rei/{}/webhooks/{}/deliveries",
+            self.base_url, rei_id, webhook_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let deliveries: Vec<WebhookDeliveryResponse> =
+            resp.json().await.context("Failed to parse response")?;
+
+        Ok(deliveries)
     }
 }

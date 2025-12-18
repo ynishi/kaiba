@@ -50,6 +50,12 @@ enum Commands {
         action: MemoryAction,
     },
 
+    /// Webhook management
+    Webhook {
+        #[command(subcommand)]
+        action: WebhookAction,
+    },
+
     /// Get prompt for external Tei (Claude Code, Casting, etc.)
     Prompt {
         /// Output format: raw, claude-code, casting
@@ -141,6 +147,87 @@ enum MemoryAction {
     },
 }
 
+#[derive(Subcommand)]
+enum WebhookAction {
+    /// List all webhooks
+    List {
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Create a new webhook
+    Create {
+        /// Webhook name
+        #[arg(short, long)]
+        name: String,
+        /// Target URL
+        #[arg(short, long)]
+        url: String,
+        /// Event types (comma-separated: learning_completed, memory_added, etc.)
+        #[arg(short, long, value_delimiter = ',')]
+        events: Vec<String>,
+        /// Payload format (e.g., "github_issue")
+        #[arg(short = 'f', long)]
+        format: Option<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Update a webhook
+    Update {
+        /// Webhook ID
+        webhook_id: String,
+        /// New name
+        #[arg(long)]
+        name: Option<String>,
+        /// New URL
+        #[arg(long)]
+        url: Option<String>,
+        /// Enable webhook
+        #[arg(long)]
+        enable: bool,
+        /// Disable webhook
+        #[arg(long)]
+        disable: bool,
+        /// Event types
+        #[arg(long, value_delimiter = ',')]
+        events: Option<Vec<String>>,
+        /// Payload format
+        #[arg(short = 'f', long)]
+        format: Option<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Delete a webhook
+    Delete {
+        /// Webhook ID
+        webhook_id: String,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Trigger a webhook (for testing)
+    Trigger {
+        /// Webhook ID
+        webhook_id: String,
+        /// Event type to simulate
+        #[arg(short, long)]
+        event: Option<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// List webhook deliveries
+    Deliveries {
+        /// Webhook ID
+        webhook_id: String,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -150,6 +237,7 @@ async fn main() -> Result<()> {
         Commands::Profile { action } => cmd_profile(action).await,
         Commands::Rei { action } => cmd_rei(action).await,
         Commands::Memory { action } => cmd_memory(action).await,
+        Commands::Webhook { action } => cmd_webhook(action).await,
         Commands::Prompt {
             format,
             include_memories,
@@ -521,6 +609,221 @@ fn cmd_config() -> Result<()> {
         config.default_profile.as_deref().unwrap_or("None").cyan()
     );
     println!("  Profiles: {}", config.profiles.len());
+
+    Ok(())
+}
+
+async fn cmd_webhook(action: WebhookAction) -> Result<()> {
+    let config = Config::load()?;
+    let api_key = config
+        .api_key
+        .as_ref()
+        .context("Not logged in. Run 'kaiba login' first.")?;
+
+    let client = KaibaClient::new(&config.base_url, api_key);
+
+    match action {
+        WebhookAction::List { profile } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let webhooks = client.list_webhooks(&rei_id).await?;
+
+            if webhooks.is_empty() {
+                println!("No webhooks configured.");
+                return Ok(());
+            }
+
+            let profile_name = profile
+                .as_deref()
+                .or(config.default_profile.as_deref())
+                .unwrap_or("default");
+
+            println!("{} ({}):", "Webhooks".bold(), profile_name.cyan());
+            for webhook in webhooks {
+                let status = if webhook.enabled {
+                    "✓".green()
+                } else {
+                    "✗".red()
+                };
+                let format_badge = webhook
+                    .payload_format
+                    .as_ref()
+                    .map(|f| format!(" [{}]", f).dimmed().to_string())
+                    .unwrap_or_default();
+
+                println!(
+                    "  {} {} {}{}",
+                    status,
+                    webhook.name.cyan().bold(),
+                    webhook.events.join(", ").dimmed(),
+                    format_badge
+                );
+                println!(
+                    "    {} → {}",
+                    &webhook.id.to_string()[..8].dimmed(),
+                    webhook.url.dimmed()
+                );
+            }
+        }
+
+        WebhookAction::Create {
+            name,
+            url,
+            events,
+            format,
+            profile,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let webhook = client
+                .create_webhook(
+                    &rei_id,
+                    &name,
+                    &url,
+                    if events.is_empty() {
+                        None
+                    } else {
+                        Some(events)
+                    },
+                    format,
+                )
+                .await?;
+
+            println!("{} Webhook created: {}", "✓".green(), webhook.name.cyan());
+            println!("  ID: {}", webhook.id);
+            println!("  URL: {}", webhook.url.dimmed());
+            println!("  Events: {}", webhook.events.join(", "));
+            if let Some(fmt) = webhook.payload_format {
+                println!("  Format: {}", fmt.green());
+            }
+        }
+
+        WebhookAction::Update {
+            webhook_id,
+            name,
+            url,
+            enable,
+            disable,
+            events,
+            format,
+            profile,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            if enable && disable {
+                bail!("Cannot specify both --enable and --disable");
+            }
+
+            let enabled = if enable {
+                Some(true)
+            } else if disable {
+                Some(false)
+            } else {
+                None
+            };
+
+            let webhook = client
+                .update_webhook(&rei_id, &webhook_id, name, url, enabled, events, format)
+                .await?;
+
+            println!("{} Webhook updated: {}", "✓".green(), webhook.name.cyan());
+            println!(
+                "  Status: {}",
+                if webhook.enabled {
+                    "Enabled".green()
+                } else {
+                    "Disabled".red()
+                }
+            );
+        }
+
+        WebhookAction::Delete {
+            webhook_id,
+            profile,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            client.delete_webhook(&rei_id, &webhook_id).await?;
+
+            println!("{} Webhook deleted: {}", "✓".green(), webhook_id.dimmed());
+        }
+
+        WebhookAction::Trigger {
+            webhook_id,
+            event,
+            profile,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let delivery = client.trigger_webhook(&rei_id, &webhook_id, event).await?;
+
+            println!(
+                "{} Webhook triggered: {}",
+                "✓".green(),
+                delivery.event.cyan()
+            );
+            println!("  Delivery ID: {}", delivery.id);
+            println!(
+                "  Status: {}",
+                match delivery.status.as_str() {
+                    "success" => "Success".green(),
+                    "failed" => "Failed".red(),
+                    _ => delivery.status.yellow(),
+                }
+            );
+            if let Some(code) = delivery.status_code {
+                println!("  HTTP Status: {}", code);
+            }
+        }
+
+        WebhookAction::Deliveries {
+            webhook_id,
+            profile,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let deliveries = client.list_deliveries(&rei_id, &webhook_id).await?;
+
+            if deliveries.is_empty() {
+                println!("No deliveries found.");
+                return Ok(());
+            }
+
+            println!("{} deliveries:", deliveries.len().to_string().green());
+            for delivery in deliveries {
+                let status_badge = match delivery.status.as_str() {
+                    "success" => "✓".green(),
+                    "failed" => "✗".red(),
+                    "pending" => "⏳".yellow(),
+                    _ => "?".dimmed(),
+                };
+
+                println!(
+                    "  {} {} [{}] (attempts: {})",
+                    status_badge,
+                    delivery.event.cyan(),
+                    delivery
+                        .status_code
+                        .map(|c| c.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    delivery.attempts
+                );
+                println!("    {}", delivery.created_at.dimmed());
+            }
+        }
+    }
 
     Ok(())
 }
