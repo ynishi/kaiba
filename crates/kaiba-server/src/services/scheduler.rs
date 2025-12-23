@@ -54,6 +54,7 @@ pub struct AutonomousScheduler {
 
 impl AutonomousScheduler {
     /// Creates a new scheduler
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pool: PgPool,
         memory_kai: Arc<MemoryKai>,
@@ -412,6 +413,7 @@ impl AutonomousScheduler {
 }
 
 /// Start scheduler if all required services are available
+#[allow(clippy::too_many_arguments)]
 pub fn maybe_start_scheduler(
     pool: PgPool,
     memory_kai: Option<Arc<MemoryKai>>,

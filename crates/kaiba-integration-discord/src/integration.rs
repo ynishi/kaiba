@@ -13,6 +13,7 @@ use crate::config::DiscordConfig;
 /// Discord integration implementing TeiIntegration trait
 pub struct DiscordIntegration {
     client: DiscordClient,
+    #[allow(dead_code)]
     config: DiscordConfig,
 }
 

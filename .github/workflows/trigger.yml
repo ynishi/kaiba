@@ -1,0 +1,37 @@
+name: Kaiba Autonomous Trigger
+
+on:
+  schedule:
+    # Every 2 hours at minute 0
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+    # Manual trigger for testing
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger Kaiba Jobs
+        run: |
+          echo "Triggering Kaiba at $(date -u)"
+
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "${{ secrets.KAIBA_URL }}/kaiba/trigger" \
+            -H "Authorization: Bearer ${{ secrets.KAIBA_API_KEY }}" \
+            -H "Content-Type: application/json")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          echo "Response Code: $HTTP_CODE"
+          echo "Response Body:"
+          echo "$BODY" | jq . 2>/dev/null || echo "$BODY"
+
+          if [ "$HTTP_CODE" -ge 400 ]; then
+            echo "::error::Trigger failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "::notice::Trigger completed successfully"

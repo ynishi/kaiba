@@ -54,6 +54,8 @@ struct ReiStateRow {
     last_active_at: Option<chrono::DateTime<chrono::Utc>>,
     updated_at: chrono::DateTime<chrono::Utc>,
     energy_regen_per_hour: i32,
+    last_digest_at: Option<chrono::DateTime<chrono::Utc>>,
+    last_learn_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl From<ReiStateRow> for ReiState {
@@ -68,6 +70,8 @@ impl From<ReiStateRow> for ReiState {
             last_active_at: row.last_active_at,
             updated_at: row.updated_at,
             energy_regen_per_hour: row.energy_regen_per_hour,
+            last_digest_at: row.last_digest_at,
+            last_learn_at: row.last_learn_at,
         }
     }
 }

@@ -1,3 +1,4 @@
+use chrono::{DateTime, Utc};
 use qdrant_client::qdrant::{
     Condition, CreateCollectionBuilder, CreateFieldIndexCollectionBuilder, Distance, FieldType,
     Filter, PointStruct, Range, SearchPointsBuilder, UpsertPointsBuilder, VectorParamsBuilder,
@@ -18,6 +19,8 @@ pub struct SearchFilter {
     pub tags_match_mode: TagMatchMode,
     /// Minimum importance score
     pub min_importance: Option<f32>,
+    /// Filter memories created after this timestamp (for excluding already-digested)
+    pub created_after: Option<DateTime<Utc>>,
 }
 
 /// Qdrant client wrapper - Gateway to the Memory Sea (記憶海)
@@ -83,6 +86,7 @@ impl MemoryKai {
             ("memory_type", FieldType::Keyword),
             ("tags", FieldType::Keyword),
             ("importance", FieldType::Float),
+            ("created_at", FieldType::Datetime),
         ];
 
         for (field_name, field_type) in indexes {
@@ -195,6 +199,28 @@ impl MemoryKai {
         Ok(memories)
     }
 
+    /// Count total memories for a persona
+    pub async fn count_memories(
+        &self,
+        persona_id: &str,
+    ) -> Result<u64, Box<dyn std::error::Error>> {
+        let collection_name = format!("{}_memories", persona_id);
+
+        // Check if collection exists first
+        if !self.client.collection_exists(&collection_name).await? {
+            return Ok(0);
+        }
+
+        // Get collection info which includes point count
+        let info = self.client.collection_info(&collection_name).await?;
+        let count = info
+            .result
+            .map(|r| r.points_count.unwrap_or(0))
+            .unwrap_or(0);
+
+        Ok(count)
+    }
+
     /// Build Qdrant filter from SearchFilter
     fn build_filter(&self, filter: &SearchFilter) -> Option<Filter> {
         let mut must_conditions: Vec<Condition> = vec![];
@@ -211,6 +237,22 @@ impl MemoryKai {
                 "importance",
                 Range {
                     gte: Some(min_imp as f64),
+                    ..Default::default()
+                },
+            ));
+        }
+
+        // Created after filter (for excluding already-digested memories)
+        if let Some(created_after) = filter.created_after {
+            // Qdrant datetime filter uses Unix timestamp
+            let timestamp = created_after.timestamp();
+            must_conditions.push(Condition::datetime_range(
+                "created_at",
+                qdrant_client::qdrant::DatetimeRange {
+                    gt: Some(prost_types::Timestamp {
+                        seconds: timestamp,
+                        nanos: 0,
+                    }),
                     ..Default::default()
                 },
             ));
@@ -243,11 +285,11 @@ impl MemoryKai {
         let mut filter_builder = Filter::default();
 
         if !must_conditions.is_empty() {
-            filter_builder.must = must_conditions.into_iter().map(Into::into).collect();
+            filter_builder.must = must_conditions.into_iter().collect();
         }
 
         if !should_conditions.is_empty() {
-            filter_builder.should = should_conditions.into_iter().map(Into::into).collect();
+            filter_builder.should = should_conditions.into_iter().collect();
             // When using should with must, we need at least 1 should to match
             // This is handled automatically by Qdrant when should is non-empty
         }

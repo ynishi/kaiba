@@ -107,6 +107,7 @@ pub async fn search_memories(
         tags: payload.tags,
         tags_match_mode: payload.tags_match_mode,
         min_importance: payload.min_importance,
+        ..Default::default()
     };
 
     let memories = memory_kai

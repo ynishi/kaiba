@@ -288,6 +288,7 @@ impl SelfLearningService {
             UPDATE rei_states
             SET energy_level = GREATEST(0, energy_level - $1),
                 last_active_at = NOW(),
+                last_learn_at = NOW(),
                 updated_at = NOW()
             WHERE rei_id = $2
             "#,

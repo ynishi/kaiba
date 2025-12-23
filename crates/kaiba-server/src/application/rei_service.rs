@@ -27,7 +27,7 @@ impl<R: ReiRepository> ReiService<R> {
                 .repo
                 .find_state(rei.id)
                 .await?
-                .unwrap_or_else(|| ReiState::default_values());
+                .unwrap_or_else(ReiState::default_values);
             results.push((rei, state));
         }
 
@@ -45,7 +45,7 @@ impl<R: ReiRepository> ReiService<R> {
             .repo
             .find_state(rei.id)
             .await?
-            .unwrap_or_else(|| ReiState::default_values());
+            .unwrap_or_else(ReiState::default_values);
 
         Ok(Some((rei, state)))
     }
@@ -97,7 +97,7 @@ impl<R: ReiRepository> ReiService<R> {
             .repo
             .find_state(saved.id)
             .await?
-            .unwrap_or_else(|| ReiState::default_values());
+            .unwrap_or_else(ReiState::default_values);
 
         Ok((saved, state))
     }
@@ -142,6 +142,8 @@ impl<R: ReiRepository> ReiService<R> {
             last_active_at: Some(chrono::Utc::now()),
             updated_at: chrono::Utc::now(),
             energy_regen_per_hour: energy_regen_per_hour.unwrap_or(current.energy_regen_per_hour),
+            last_digest_at: current.last_digest_at,
+            last_learn_at: current.last_learn_at,
         };
 
         self.repo.save_state(&updated).await

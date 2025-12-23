@@ -31,6 +31,10 @@ pub struct ReiState {
     pub updated_at: DateTime<Utc>,
     /// Energy regeneration per hour (0 = disabled)
     pub energy_regen_per_hour: i32,
+    /// Last time Digest was completed (for filtering already-digested memories)
+    pub last_digest_at: Option<DateTime<Utc>>,
+    /// Last time Learn was completed (for dashboard)
+    pub last_learn_at: Option<DateTime<Utc>>,
 }
 
 impl Rei {
@@ -67,6 +71,8 @@ impl ReiState {
             last_active_at: None,
             updated_at: Utc::now(),
             energy_regen_per_hour: 10,
+            last_digest_at: None,
+            last_learn_at: None,
         }
     }
 
@@ -82,6 +88,8 @@ impl ReiState {
             last_active_at: None,
             updated_at: Utc::now(),
             energy_regen_per_hour: 10,
+            last_digest_at: None,
+            last_learn_at: None,
         }
     }
 }

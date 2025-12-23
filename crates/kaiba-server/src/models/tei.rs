@@ -55,12 +55,14 @@ pub struct Tei {
 
 impl Tei {
     /// Get provider as enum
+    #[allow(dead_code)]
     pub fn provider_enum(&self) -> Result<Provider, String> {
         self.provider.parse()
     }
 }
 
 /// Rei-Tei association
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow, ToSchema)]
 pub struct ReiTei {
     pub rei_id: Uuid,

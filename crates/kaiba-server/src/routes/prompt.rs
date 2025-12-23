@@ -313,6 +313,7 @@ async fn search_memories_for_prompt(
         tags: focus_tags,
         tags_match_mode: TagMatchMode::Any, // OR match for prompt context
         min_importance,
+        ..Default::default()
     };
 
     // Search memories

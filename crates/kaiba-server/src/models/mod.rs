@@ -7,6 +7,7 @@
 //! - Webhook: Outbound webhook configuration
 
 mod call;
+mod dashboard;
 mod memory;
 mod prompt;
 mod rei;
@@ -14,6 +15,7 @@ mod tei;
 mod webhook;
 
 pub use call::*;
+pub use dashboard::*;
 pub use memory::*;
 pub use prompt::*;
 pub use rei::*;

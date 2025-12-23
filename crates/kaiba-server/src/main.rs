@@ -173,6 +173,8 @@ async fn main(
         .merge(routes::learning::router())
         .merge(routes::prompt::router())
         .merge(routes::webhook::router())
+        .merge(routes::dashboard::router())
+        .merge(routes::trigger::router())
         .layer(middleware::from_fn(auth::auth_middleware));
 
     // OpenAPI documentation

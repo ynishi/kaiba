@@ -4,7 +4,8 @@
 
 use crate::models::{Memory, MemoryType};
 use crate::services::embedding::EmbeddingService;
-use crate::services::qdrant::MemoryKai;
+use crate::services::qdrant::{MemoryKai, SearchFilter};
+use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -47,8 +48,11 @@ impl DigestService {
 
     /// Digest recent learning memories for a Rei
     pub async fn digest(&self, rei_id: Uuid) -> Result<DigestResult, DigestError> {
+        // 0. Get last_digest_at to filter already-digested memories
+        let last_digest_at = self.get_last_digest_at(rei_id).await?;
+
         // 1. Get recent learning memories (not yet digested)
-        let memories = self.get_learning_memories(rei_id).await?;
+        let memories = self.get_learning_memories(rei_id, last_digest_at).await?;
 
         if memories.is_empty() {
             return Ok(DigestResult {
@@ -103,8 +107,24 @@ impl DigestService {
         })
     }
 
-    /// Get recent learning memories
-    async fn get_learning_memories(&self, rei_id: Uuid) -> Result<Vec<Memory>, DigestError> {
+    /// Get last_digest_at from rei_states
+    async fn get_last_digest_at(&self, rei_id: Uuid) -> Result<Option<DateTime<Utc>>, DigestError> {
+        let result: Option<(Option<DateTime<Utc>>,)> =
+            sqlx::query_as("SELECT last_digest_at FROM rei_states WHERE rei_id = $1")
+                .bind(rei_id)
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(|e| DigestError::DatabaseError(e.to_string()))?;
+
+        Ok(result.and_then(|(ts,)| ts))
+    }
+
+    /// Get recent learning memories (created after last_digest_at)
+    async fn get_learning_memories(
+        &self,
+        rei_id: Uuid,
+        last_digest_at: Option<DateTime<Utc>>,
+    ) -> Result<Vec<Memory>, DigestError> {
         // Search for learning type memories
         // We use a generic query to get recent learnings
         let query_vector = self
@@ -113,19 +133,20 @@ impl DigestService {
             .await
             .map_err(|e| DigestError::EmbeddingFailed(e.to_string()))?;
 
+        // Build filter: Learning type + created after last_digest_at
+        let filter = SearchFilter {
+            memory_type: Some(MemoryType::Learning),
+            created_after: last_digest_at,
+            ..Default::default()
+        };
+
         let memories = self
             .memory_kai
-            .search_memories(&rei_id.to_string(), query_vector, 10)
+            .search_memories_with_filter(&rei_id.to_string(), query_vector, 20, filter)
             .await
             .map_err(|e| DigestError::SearchFailed(e.to_string()))?;
 
-        // Filter for learning type only
-        let learning_memories: Vec<Memory> = memories
-            .into_iter()
-            .filter(|m| matches!(m.memory_type, MemoryType::Learning))
-            .collect();
-
-        Ok(learning_memories)
+        Ok(memories)
     }
 
     /// Generate summary using Gemini
@@ -198,11 +219,13 @@ Create a well-structured summary (in the same language as the memories) that con
 
     /// Update last digest timestamp
     async fn update_digest_timestamp(&self, rei_id: Uuid) -> Result<(), DigestError> {
-        sqlx::query("UPDATE rei_states SET last_active_at = NOW() WHERE rei_id = $1")
-            .bind(rei_id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| DigestError::DatabaseError(e.to_string()))?;
+        sqlx::query(
+            "UPDATE rei_states SET last_digest_at = NOW(), last_active_at = NOW() WHERE rei_id = $1",
+        )
+        .bind(rei_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| DigestError::DatabaseError(e.to_string()))?;
 
         Ok(())
     }

@@ -48,6 +48,8 @@ pub async fn list_reis(
                 tokens_used: rei_state.tokens_used,
                 last_active_at: rei_state.last_active_at,
                 energy_regen_per_hour: rei_state.energy_regen_per_hour,
+                last_digest_at: rei_state.last_digest_at,
+                last_learn_at: rei_state.last_learn_at,
             },
             created_at: rei.created_at,
             updated_at: rei.updated_at,
@@ -96,6 +98,8 @@ pub async fn create_rei(
             tokens_used: rei_state.tokens_used,
             last_active_at: rei_state.last_active_at,
             energy_regen_per_hour: rei_state.energy_regen_per_hour,
+            last_digest_at: rei_state.last_digest_at,
+            last_learn_at: rei_state.last_learn_at,
         },
         created_at: rei.created_at,
         updated_at: rei.updated_at,
@@ -143,6 +147,8 @@ pub async fn get_rei(
             tokens_used: rei_state.tokens_used,
             last_active_at: rei_state.last_active_at,
             energy_regen_per_hour: rei_state.energy_regen_per_hour,
+            last_digest_at: rei_state.last_digest_at,
+            last_learn_at: rei_state.last_learn_at,
         },
         created_at: rei.created_at,
         updated_at: rei.updated_at,
@@ -200,6 +206,8 @@ pub async fn update_rei(
             tokens_used: rei_state.tokens_used,
             last_active_at: rei_state.last_active_at,
             energy_regen_per_hour: rei_state.energy_regen_per_hour,
+            last_digest_at: rei_state.last_digest_at,
+            last_learn_at: rei_state.last_learn_at,
         },
         created_at: rei.created_at,
         updated_at: rei.updated_at,
@@ -278,6 +286,8 @@ pub async fn get_rei_state(
         tokens_used: rei_state.tokens_used,
         last_active_at: rei_state.last_active_at,
         energy_regen_per_hour: rei_state.energy_regen_per_hour,
+        last_digest_at: rei_state.last_digest_at,
+        last_learn_at: rei_state.last_learn_at,
     }))
 }
 
@@ -327,6 +337,8 @@ pub async fn update_rei_state(
         tokens_used: rei_state.tokens_used,
         last_active_at: rei_state.last_active_at,
         energy_regen_per_hour: rei_state.energy_regen_per_hour,
+        last_digest_at: rei_state.last_digest_at,
+        last_learn_at: rei_state.last_learn_at,
     }))
 }
 

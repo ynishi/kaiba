@@ -21,6 +21,7 @@ pub struct ReiResponse {
     pub id: Uuid,
     pub name: String,
     pub role: String,
+    #[allow(dead_code)]
     pub avatar_url: Option<String>,
     pub state: ReiStateResponse,
 }
@@ -28,14 +29,17 @@ pub struct ReiResponse {
 #[derive(Debug, Deserialize)]
 pub struct ReiStateResponse {
     pub energy_level: i32,
+    #[allow(dead_code)]
     pub mood: String,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct MemoryResponse {
+    #[allow(dead_code)]
     pub id: String,
     pub content: String,
     pub memory_type: String,
+    #[allow(dead_code)]
     pub importance: f32,
 }
 
@@ -49,10 +53,12 @@ pub struct PromptResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct ReiSummary {
+    #[allow(dead_code)]
     pub id: uuid::Uuid,
     pub name: String,
     pub role: String,
     pub energy_level: i32,
+    #[allow(dead_code)]
     pub mood: String,
 }
 
@@ -77,15 +83,20 @@ pub struct SearchMemoriesRequest {
 #[derive(Debug, Deserialize)]
 pub struct WebhookResponse {
     pub id: Uuid,
+    #[allow(dead_code)]
     pub rei_id: Uuid,
     pub name: String,
     pub url: String,
     pub enabled: bool,
     pub events: Vec<String>,
+    #[allow(dead_code)]
     pub max_retries: i32,
+    #[allow(dead_code)]
     pub timeout_ms: i32,
     pub payload_format: Option<String>,
+    #[allow(dead_code)]
     pub created_at: String,
+    #[allow(dead_code)]
     pub updated_at: String,
 }
 
@@ -118,12 +129,14 @@ pub struct UpdateWebhookRequest {
 #[derive(Debug, Deserialize)]
 pub struct WebhookDeliveryResponse {
     pub id: Uuid,
+    #[allow(dead_code)]
     pub webhook_id: Uuid,
     pub event: String,
     pub status: String,
     pub status_code: Option<i32>,
     pub attempts: i32,
     pub created_at: String,
+    #[allow(dead_code)]
     pub completed_at: Option<String>,
 }
 
@@ -368,6 +381,7 @@ impl KaibaClient {
     }
 
     /// Update a webhook
+    #[allow(clippy::too_many_arguments)]
     pub async fn update_webhook(
         &self,
         rei_id: &str,

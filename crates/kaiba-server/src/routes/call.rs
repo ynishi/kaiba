@@ -13,7 +13,7 @@ use crate::models::{
 use crate::AppState;
 
 /// Select Tei based on Rei's energy level
-fn select_tei<'a>(energy_level: i32, teis: &'a [Tei]) -> Option<&'a Tei> {
+fn select_tei(energy_level: i32, teis: &[Tei]) -> Option<&Tei> {
     if teis.is_empty() {
         return None;
     }

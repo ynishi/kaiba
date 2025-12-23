@@ -28,6 +28,7 @@ impl<R: TeiRepository> TeiService<R> {
     }
 
     /// Create a new Tei
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
         name: String,
@@ -60,6 +61,7 @@ impl<R: TeiRepository> TeiService<R> {
     }
 
     /// Update a Tei
+    #[allow(clippy::too_many_arguments)]
     pub async fn update(
         &self,
         id: Uuid,

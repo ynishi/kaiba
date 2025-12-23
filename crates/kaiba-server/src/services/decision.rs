@@ -166,6 +166,8 @@ mod tests {
             last_active_at: Some(Utc::now()),
             updated_at: Utc::now(),
             energy_regen_per_hour: 10,
+            last_digest_at: None,
+            last_learn_at: None,
         }
     }
 

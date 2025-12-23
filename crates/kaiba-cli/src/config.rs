@@ -12,8 +12,9 @@ const CONFIG_DIR: &str = "kaiba";
 const CONFIG_FILE: &str = "config.toml";
 
 /// Profile for a Rei
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Profile {
+    #[serde(default)]
     pub rei_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
@@ -136,14 +137,5 @@ impl Config {
     /// Get Rei ID from profile
     pub fn get_rei_id(&self, profile: Option<&str>) -> Option<String> {
         self.get_profile(profile).map(|p| p.rei_id.clone())
-    }
-}
-
-impl Default for Profile {
-    fn default() -> Self {
-        Self {
-            rei_id: String::new(),
-            name: None,
-        }
     }
 }
