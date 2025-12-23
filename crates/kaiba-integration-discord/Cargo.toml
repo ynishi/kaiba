@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
 description = "Discord integration for Kaiba AI persona system"
 
 [lib]
@@ -12,7 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain
-kaiba = { path = "../kaiba" }
+kaiba = { version = "0.1.1", path = "../kaiba" }
 
 # Discord SDK
 serenity = { version = "0.12", default-features = false, features = [
