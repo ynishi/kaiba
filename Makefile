@@ -1,4 +1,4 @@
-.PHONY: check build test publish-cli publish-cli-dry
+.PHONY: check build test publish-cli publish-cli-dry release-minor-dry release-minor
 
 # Development
 check:
@@ -18,3 +18,11 @@ publish-cli-dry:
 
 publish-cli:
 	cargo publish -p kaiba-cli
+
+# Release management
+# Increments minor version (0.1.x -> 0.2.0), creates git tag, updates changelog
+release-minor-dry:
+	cargo release minor --workspace
+
+release-minor:
+	cargo release minor --workspace --execute
