@@ -15,7 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # Core domain
-kaiba = { version = "0.2.0", path = "../kaiba" }
+kaiba = { version = "0.2.1", path = "../kaiba" }
 
 # Discord SDK
 serenity = { version = "0.12", default-features = false, features = [
