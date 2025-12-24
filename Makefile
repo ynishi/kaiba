@@ -1,4 +1,4 @@
-.PHONY: check build test publish-cli publish-cli-dry release-minor-dry release-minor
+.PHONY: check build test publish-cli publish-cli-dry release-minor-dry release-minor release-patch
 
 # Development
 check:
@@ -26,3 +26,6 @@ release-minor-dry:
 
 release-minor:
 	cargo release minor --workspace --execute
+
+release-patch:
+	cargo release patch --workspace --execute
