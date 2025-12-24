@@ -8,6 +8,8 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use llm_toolkit::minijinja::Environment;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::models::{
@@ -118,6 +120,34 @@ pub async fn generate_prompt(
 }
 
 // ============================================
+// Template Rendering
+// ============================================
+
+/// Embedded templates
+const TEMPLATE_CASTING: &str = include_str!("../../templates/rei_casting.jinja");
+const TEMPLATE_CLAUDE_CODE: &str = include_str!("../../templates/rei_claude_code.jinja");
+const TEMPLATE_RAW: &str = include_str!("../../templates/rei_raw.jinja");
+
+/// Prompt context data for template rendering
+#[derive(Serialize)]
+struct PromptContext<'a> {
+    rei: &'a Rei,
+    state: &'a ReiState,
+    memories: &'a [Memory],
+}
+
+/// Render template with given context
+fn render_template(template_str: &str, context: &PromptContext) -> Result<String, String> {
+    let env = Environment::new();
+    let tmpl = env
+        .template_from_str(template_str)
+        .map_err(|e| format!("Failed to parse template: {}", e))?;
+
+    tmpl.render(context)
+        .map_err(|e| format!("Failed to render template: {}", e))
+}
+
+// ============================================
 // Formatters
 // ============================================
 
@@ -131,14 +161,27 @@ fn format_name(format: PromptFormat) -> &'static str {
 
 /// Generate prompt in the requested format
 fn format_prompt(rei: &Rei, state: &ReiState, memories: &[Memory], format: PromptFormat) -> String {
-    match format {
-        PromptFormat::Casting => format_casting(rei, state, memories),
-        PromptFormat::ClaudeCode => format_claude_code(rei, state, memories),
-        PromptFormat::Raw => format_raw(rei, state, memories),
-    }
+    let context = PromptContext {
+        rei,
+        state,
+        memories,
+    };
+
+    let template_str = match format {
+        PromptFormat::Casting => TEMPLATE_CASTING,
+        PromptFormat::ClaudeCode => TEMPLATE_CLAUDE_CODE,
+        PromptFormat::Raw => TEMPLATE_RAW,
+    };
+
+    render_template(template_str, &context).unwrap_or_else(|e| {
+        tracing::error!("Template rendering failed: {}", e);
+        format!("Error: {}", e)
+    })
 }
 
-/// Casting CLI format (system_prompt.txt compatible)
+/// DEPRECATED: Casting CLI format (system_prompt.txt compatible)
+/// Replaced by ToPrompt template (rei_casting.jinja)
+#[allow(dead_code)]
 fn format_casting(rei: &Rei, state: &ReiState, memories: &[Memory]) -> String {
     let mut prompt = format!(
         r#"YOU ARE a Persona named "{name}" who embodies the role of {role}.
@@ -211,7 +254,9 @@ Use search to recall past conversations, projects, or learnings that aren't in t
     prompt
 }
 
-/// Claude Code --system-prompt format
+/// DEPRECATED: Claude Code --system-prompt format
+/// Replaced by ToPrompt template (rei_claude_code.jinja)
+#[allow(dead_code)]
 fn format_claude_code(rei: &Rei, state: &ReiState, memories: &[Memory]) -> String {
     let mut prompt = format!(
         r#"You are {name}, {role}.
@@ -261,7 +306,9 @@ Types: learning, fact, expertise, reflection
     prompt
 }
 
-/// Raw format with clear sections
+/// DEPRECATED: Raw format with clear sections
+/// Replaced by ToPrompt template (rei_raw.jinja)
+#[allow(dead_code)]
 fn format_raw(rei: &Rei, state: &ReiState, memories: &[Memory]) -> String {
     let mut prompt = String::new();
 

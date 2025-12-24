@@ -5,6 +5,8 @@ use axum::{
     routing::post,
     Json, Router,
 };
+use llm_toolkit::minijinja::Environment;
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::models::{
@@ -284,36 +286,27 @@ async fn search_memories_for_rag(
     Ok((memories, refs))
 }
 
+/// Embedded template for call prompts
+const TEMPLATE_CALL: &str = include_str!("../../templates/rei_call.jinja");
+
+/// Prompt context for LLM Call
+#[derive(Serialize)]
+struct CallPromptContext<'a> {
+    rei: &'a Rei,
+    memories: &'a [Memory],
+}
+
 /// Build system prompt with Rei identity and memories
 fn build_system_prompt(rei: &Rei, memories: &[Memory]) -> String {
-    let mut prompt = format!("You are {}, {}.\n", rei.name, rei.role);
+    let context = CallPromptContext { rei, memories };
 
-    // Add manifest if present
-    if let Some(manifest) = rei.manifest.as_object() {
-        if let Some(personality) = manifest.get("personality") {
-            prompt.push_str(&format!("\nPersonality: {}\n", personality));
-        }
-        if let Some(instructions) = manifest.get("instructions") {
-            prompt.push_str(&format!("\nInstructions: {}\n", instructions));
-        }
-    }
+    let env = Environment::new();
+    let tmpl = env
+        .template_from_str(TEMPLATE_CALL)
+        .expect("Failed to parse template");
 
-    // Add relevant memories as context
-    if !memories.is_empty() {
-        prompt.push_str("\n## Relevant Memories\n");
-        prompt.push_str("Use the following memories as context for your response:\n\n");
-        for mem in memories {
-            prompt.push_str(&format!(
-                "- [{}] {} (created: {}, importance: {:.2})\n",
-                mem.memory_type,
-                mem.content,
-                mem.created_at.format("%Y-%m-%d %H:%M UTC"),
-                mem.importance
-            ));
-        }
-    }
-
-    prompt
+    tmpl.render(&context)
+        .expect("Failed to render template")
 }
 
 pub fn router() -> Router<AppState> {
