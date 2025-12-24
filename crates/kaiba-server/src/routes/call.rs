@@ -5,13 +5,13 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use llm_toolkit::minijinja::Environment;
-use serde::Serialize;
+use llm_toolkit::ToPrompt;
 use uuid::Uuid;
 
 use crate::models::{
     CallLog, CallRequest, CallResponse, Memory, MemoryReference, Rei, ReiState, Tei,
 };
+use crate::routes::prompt::CallPromptDto;
 use crate::AppState;
 
 /// Select Tei based on Rei's energy level
@@ -286,27 +286,10 @@ async fn search_memories_for_rag(
     Ok((memories, refs))
 }
 
-/// Embedded template for call prompts
-const TEMPLATE_CALL: &str = include_str!("../../templates/rei_call.jinja");
-
-/// Prompt context for LLM Call
-#[derive(Serialize)]
-struct CallPromptContext<'a> {
-    rei: &'a Rei,
-    memories: &'a [Memory],
-}
-
-/// Build system prompt with Rei identity and memories
+/// Build system prompt with Rei identity and memories using ToPrompt DTO
 fn build_system_prompt(rei: &Rei, memories: &[Memory]) -> String {
-    let context = CallPromptContext { rei, memories };
-
-    let env = Environment::new();
-    let tmpl = env
-        .template_from_str(TEMPLATE_CALL)
-        .expect("Failed to parse template");
-
-    tmpl.render(&context)
-        .expect("Failed to render template")
+    let dto = CallPromptDto::new(rei, memories);
+    dto.to_prompt()
 }
 
 pub fn router() -> Router<AppState> {
