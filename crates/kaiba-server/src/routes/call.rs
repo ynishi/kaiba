@@ -303,7 +303,13 @@ fn build_system_prompt(rei: &Rei, memories: &[Memory]) -> String {
         prompt.push_str("\n## Relevant Memories\n");
         prompt.push_str("Use the following memories as context for your response:\n\n");
         for mem in memories {
-            prompt.push_str(&format!("- [{}] {}\n", mem.memory_type, mem.content));
+            prompt.push_str(&format!(
+                "- [{}] {} (created: {}, importance: {:.2})\n",
+                mem.memory_type,
+                mem.content,
+                mem.created_at.format("%Y-%m-%d %H:%M UTC"),
+                mem.importance
+            ));
         }
     }
 

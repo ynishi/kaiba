@@ -175,9 +175,15 @@ Your role is to:
 
     // Add memories as context
     if !memories.is_empty() {
-        prompt.push_str("\n## Your Memories (use as context)\n");
+        prompt.push_str("\n## Your Memories\n");
         for mem in memories {
-            prompt.push_str(&format!("- [{}] {}\n", mem.memory_type, mem.content));
+            prompt.push_str(&format!(
+                "- [{}] {} (created: {}, importance: {:.2})\n",
+                mem.memory_type,
+                mem.content,
+                mem.created_at.format("%Y-%m-%d %H:%M UTC"),
+                mem.importance
+            ));
         }
     }
 
@@ -232,7 +238,13 @@ Current state: {mood} (Energy: {energy}%)
     if !memories.is_empty() {
         prompt.push_str("\n## Context from Memory\n");
         for mem in memories {
-            prompt.push_str(&format!("- {}\n", mem.content));
+            prompt.push_str(&format!(
+                "- [{}] {} (created: {}, importance: {:.2})\n",
+                mem.memory_type,
+                mem.content,
+                mem.created_at.format("%Y-%m-%d %H:%M UTC"),
+                mem.importance
+            ));
         }
     }
 
@@ -269,8 +281,11 @@ fn format_raw(rei: &Rei, state: &ReiState, memories: &[Memory]) -> String {
         prompt.push_str("\n\n=== MEMORIES ===\n");
         for mem in memories {
             prompt.push_str(&format!(
-                "[{}] (importance: {:.2}) {}\n",
-                mem.memory_type, mem.importance, mem.content
+                "[{}] (created: {}, importance: {:.2}) {}\n",
+                mem.memory_type,
+                mem.created_at.format("%Y-%m-%d %H:%M UTC"),
+                mem.importance,
+                mem.content
             ));
         }
     }
