@@ -34,8 +34,12 @@ pub use domain::{
     // GraphKai - Emphasis types
     EmphasisNode, EmphasisParseResult, EmphasisParser, EmphasisParserConfig, EmphasisStyle,
     TextPosition,
+    // GraphKai - Graph builder
+    BuildStats, GraphBuildResult, GraphBuilder,
     // GraphKai - Graph types
     EdgeType, GraphEdge, GraphNode, GraphPath, NodeType,
+    // GraphKai - Configuration
+    EmphasisWeights, LinkageConfig, LinkageStrategy, SearchConfig, SearchStrategy,
 };
 pub use ports::{
     // Tei Services (体 - execution interfaces)

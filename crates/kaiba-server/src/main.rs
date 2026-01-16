@@ -203,6 +203,7 @@ async fn main(
         .merge(routes::call::router())
         .merge(routes::memory::router())
         .merge(routes::document::router())
+        .merge(routes::graph::router())
         .merge(routes::search::router())
         .merge(routes::learning::router())
         .merge(routes::prompt::router())

@@ -628,7 +628,7 @@ impl GraphRepository for Neo4jGraphRepository {
 
         // For simplicity, return empty vec - full path parsing is complex
         // In production, we'd parse the path properly
-        let mut paths = Vec::new();
+        let paths = Vec::new();
         while result.next().await.is_ok() {
             // Path parsing would go here
         }

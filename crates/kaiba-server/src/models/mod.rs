@@ -4,12 +4,14 @@
 //! - Tei (体): Execution interface with expertise
 //! - Memory: Long-term storage
 //! - Document: Source of Truth for GraphKai
+//! - Graph: GraphKai knowledge graph models
 //! - Call: LLM invocation
 //! - Webhook: Outbound webhook configuration
 
 mod call;
 mod dashboard;
 mod document;
+mod graph;
 mod memory;
 mod prompt;
 mod rei;
@@ -19,6 +21,7 @@ mod webhook;
 pub use call::*;
 pub use dashboard::*;
 pub use document::*;
+pub use graph::*;
 pub use memory::*;
 pub use prompt::*;
 pub use rei::*;
