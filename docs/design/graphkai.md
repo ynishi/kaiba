@@ -222,15 +222,78 @@ async fn search_memories_for_rag(...) {
 ### New Endpoints
 
 ```
-POST /kaiba/rei/{id}/documents           # Ingest document
+POST /kaiba/rei/{id}/documents           # Ingest documents (batch)
 GET  /kaiba/rei/{id}/documents           # List documents
 GET  /kaiba/rei/{id}/documents/{doc_id}  # Get document
-DELETE /kaiba/rei/{id}/documents/{doc_id} # Delete document
+DELETE /kaiba/rei/{id}/documents         # Delete documents (batch)
 
 POST /kaiba/rei/{id}/graph/rebuild       # Rebuild graph with new thresholds
 GET  /kaiba/rei/{id}/graph/nodes         # List graph nodes
 GET  /kaiba/rei/{id}/graph/neighbors/{node_id}  # Get node neighbors
 ```
+
+### Batch API Design
+
+All mutation endpoints accept arrays by default:
+
+```rust
+// POST /kaiba/rei/{id}/documents
+#[derive(Deserialize)]
+pub struct IngestDocumentsRequest {
+    pub documents: Vec<DocumentInput>,  // Always array, even for single doc
+}
+
+#[derive(Deserialize)]
+pub struct DocumentInput {
+    pub title: String,
+    pub content: String,               // Raw Markdown
+    pub source_path: Option<String>,
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+pub struct IngestDocumentsResponse {
+    pub results: Vec<IngestResult>,
+    pub summary: IngestSummary,
+}
+
+#[derive(Serialize)]
+pub struct IngestResult {
+    pub doc_id: String,
+    pub title: String,
+    pub status: IngestStatus,          // Created, Updated, Failed
+    pub nodes_created: usize,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct IngestSummary {
+    pub total: usize,
+    pub created: usize,
+    pub updated: usize,
+    pub failed: usize,
+}
+```
+
+```rust
+// DELETE /kaiba/rei/{id}/documents
+#[derive(Deserialize)]
+pub struct DeleteDocumentsRequest {
+    pub doc_ids: Vec<String>,          // Always array
+}
+
+#[derive(Serialize)]
+pub struct DeleteDocumentsResponse {
+    pub deleted: usize,
+    pub not_found: Vec<String>,
+}
+```
+
+**Design Rationale**:
+- Single doc = array of 1 (no separate endpoint)
+- Reduces API surface
+- Enables efficient bulk operations (transaction batching)
+- Client always uses same code path
 
 ### AppState Extension
 
