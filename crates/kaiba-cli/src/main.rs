@@ -16,9 +16,35 @@ use uuid::Uuid;
 use api::{DocumentInput, KaibaClient};
 use config::Config;
 
+const LONG_ABOUT: &str = r#"
+Kaiba CLI - AI Persona Memory Management
+
+QUICK START:
+  kaiba login                    # API認証
+  kaiba profile add <name> <id>  # プロファイル追加
+  kaiba memory add "content"     # メモリ追加
+
+MEMORY SEARCH:
+  kaiba memory search "query"           # 簡易検索（プレビュー表示）
+  kaiba memory search "query" --full    # 全文表示
+
+PROMPT GENERATION (推奨):
+  kaiba prompt --include-memories --context "topic"
+
+  → メモリをコンテキストに含めたプロンプトを生成
+  → Claude Code / Casting など外部Tei向け
+  → セマンティック検索で関連メモリを自動取得
+
+DOCUMENT & GRAPH (GraphKai):
+  kaiba doc ingest file.md       # ドキュメント取り込み
+  kaiba graph rebuild            # ナレッジグラフ構築
+  kaiba graph export -f dot      # Graphviz形式でエクスポート
+"#;
+
 #[derive(Parser)]
 #[command(name = "kaiba")]
-#[command(about = "Kaiba CLI - Memory upload and management", long_about = None)]
+#[command(about = "Kaiba CLI - AI Persona Memory Management")]
+#[command(long_about = LONG_ABOUT)]
 #[command(version)]
 struct Cli {
     #[command(subcommand)]
@@ -148,13 +174,16 @@ enum MemoryAction {
         #[arg(short, long)]
         profile: Option<String>,
     },
-    /// Search memories
+    /// Search memories (use 'kaiba prompt --include-memories' for semantic search)
     Search {
         /// Search query
         query: String,
         /// Max results
         #[arg(short, long, default_value = "10")]
         limit: usize,
+        /// Show full content (default: 60 char preview)
+        #[arg(long)]
+        full: bool,
         /// Profile to use
         #[arg(short, long)]
         profile: Option<String>,
@@ -606,6 +635,7 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
         MemoryAction::Search {
             query,
             limit,
+            full,
             profile,
         } => {
             let rei_id = config.get_rei_id(profile.as_deref())
@@ -615,6 +645,11 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
 
             if memories.is_empty() {
                 println!("No memories found for '{}'", query);
+                println!(
+                    "\n{}: Use '{}' for semantic search with context",
+                    "Tip".cyan().bold(),
+                    "kaiba prompt --include-memories --context \"topic\"".yellow()
+                );
                 return Ok(());
             }
 
@@ -632,8 +667,22 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
 
             for mem in memories {
                 let type_badge = format!("[{}]", mem.memory_type).dimmed();
-                let preview = truncate_string(&mem.content, 60);
-                println!("  {} {}", type_badge, preview);
+                if full {
+                    println!("\n  {} {}", type_badge, "─".repeat(50).dimmed());
+                    println!("  {}", mem.content);
+                } else {
+                    let preview = truncate_string(&mem.content, 60);
+                    println!("  {} {}", type_badge, preview);
+                }
+            }
+
+            if !full {
+                println!(
+                    "\n{}: Use {} for full content, or {} for semantic search",
+                    "Tip".cyan().bold(),
+                    "--full".yellow(),
+                    "kaiba prompt --include-memories".yellow()
+                );
             }
         }
     }
