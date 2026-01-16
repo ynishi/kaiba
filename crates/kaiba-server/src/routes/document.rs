@@ -9,11 +9,11 @@ use axum::{
 };
 use uuid::Uuid;
 
-use kaiba::{DocRepository, Document, SaveStatus};
+use kaiba::{DocRepository, Document, EmphasisParser, SaveStatus};
 
 use crate::models::{
     DeleteDocumentsRequest, DeleteDocumentsResponse, DocumentResponse, DocumentSaveResultDto,
-    DocumentStatus, DocumentSummary, IngestDocumentsRequest, IngestDocumentsResponse,
+    DocumentStatus, DocumentSummary, EmphasisStats, IngestDocumentsRequest, IngestDocumentsResponse,
     IngestSummary,
 };
 use crate::AppState;
@@ -65,11 +65,15 @@ pub async fn ingest_documents(
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // Parse emphasis for each document
+    let emphasis_parser = EmphasisParser::new();
+
     // Build response
     let mut created = 0;
     let mut updated = 0;
     let mut unchanged = 0;
     let failed = 0;
+    let mut total_emphasis_nodes = 0;
 
     let results: Vec<DocumentSaveResultDto> = save_results
         .iter()
@@ -88,10 +92,26 @@ pub async fn ingest_documents(
                     DocumentStatus::Unchanged
                 }
             };
+
+            // Parse emphasis for created/updated documents
+            let emphasis = if matches!(r.status, SaveStatus::Created | SaveStatus::Updated) {
+                let parse_result = emphasis_parser.parse(r.document.id, &r.document.raw_content);
+                total_emphasis_nodes += parse_result.total_count();
+                Some(EmphasisStats {
+                    bold: parse_result.bold_count,
+                    italic: parse_result.italic_count,
+                    bold_italic: parse_result.bold_italic_count,
+                    code: parse_result.code_count,
+                })
+            } else {
+                None
+            };
+
             DocumentSaveResultDto {
                 doc_id: r.document.id,
                 title: r.document.title.clone(),
                 status,
+                emphasis,
                 error: None,
             }
         })
@@ -103,15 +123,17 @@ pub async fn ingest_documents(
         updated,
         unchanged,
         failed,
+        total_emphasis_nodes,
     };
 
     tracing::info!(
-        "Ingested {} documents for Rei {}: {} created, {} updated, {} unchanged",
+        "Ingested {} documents for Rei {}: {} created, {} updated, {} unchanged, {} emphasis nodes",
         summary.total,
         rei_id,
         created,
         updated,
-        unchanged
+        unchanged,
+        total_emphasis_nodes
     );
 
     Ok(Json(IngestDocumentsResponse { results, summary }))

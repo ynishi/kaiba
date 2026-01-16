@@ -56,6 +56,25 @@ pub enum DocumentStatus {
     Failed,
 }
 
+/// Emphasis parsing statistics
+#[derive(Debug, Clone, Copy, Default, Serialize, ToSchema)]
+pub struct EmphasisStats {
+    /// Number of bold emphasis nodes
+    pub bold: usize,
+    /// Number of italic emphasis nodes
+    pub italic: usize,
+    /// Number of bold+italic emphasis nodes
+    pub bold_italic: usize,
+    /// Number of code emphasis nodes
+    pub code: usize,
+}
+
+impl EmphasisStats {
+    pub fn total(&self) -> usize {
+        self.bold + self.italic + self.bold_italic + self.code
+    }
+}
+
 /// Result of saving a single document
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DocumentSaveResultDto {
@@ -65,6 +84,9 @@ pub struct DocumentSaveResultDto {
     pub title: String,
     /// Save status
     pub status: DocumentStatus,
+    /// Parsed emphasis statistics (only for created/updated docs)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emphasis: Option<EmphasisStats>,
     /// Error message if failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -83,6 +105,8 @@ pub struct IngestSummary {
     pub unchanged: usize,
     /// Documents failed
     pub failed: usize,
+    /// Total emphasis nodes extracted
+    pub total_emphasis_nodes: usize,
 }
 
 /// Batch document ingestion response

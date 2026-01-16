@@ -28,5 +28,8 @@ async-trait = "0.1"
 # Crypto (checksum)
 sha2 = "0.10"
 
+# Markdown parsing (GraphKai emphasis extraction)
+pulldown-cmark = "0.12"
+
 # Error handling
 thiserror = { workspace = true }

@@ -27,9 +27,13 @@ pub mod ports;
 
 // Re-export commonly used types
 pub use domain::{
+    // Entities
     Call, DeliveryStatus, Document, DomainError, Memory, MemoryType, Message, Prompt, Provider,
     Rei, ReiState, ReiTei, ReiWebhook, TagMatchMode, Tei, WebhookDelivery, WebhookEventType,
     WebhookPayload,
+    // GraphKai - Emphasis types
+    EmphasisNode, EmphasisParseResult, EmphasisParser, EmphasisParserConfig, EmphasisStyle,
+    TextPosition,
 };
 pub use ports::{
     // Tei Services (体 - execution interfaces)

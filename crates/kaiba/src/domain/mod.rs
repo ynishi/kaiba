@@ -11,4 +11,5 @@ pub mod value_objects;
 // Re-exports for convenience
 pub use entities::*;
 pub use errors::*;
+pub use services::*;
 pub use value_objects::*;
