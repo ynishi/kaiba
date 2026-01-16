@@ -147,6 +147,7 @@ impl GraphRepository for Neo4jGraphRepository {
         let cypher = format!(
             r#"
             MERGE (n:{} {{id: $id}})
+            ON CREATE SET n.created_at = datetime()
             SET n.rei_id = $rei_id,
                 n.text = $text,
                 n.weight = $weight,
@@ -154,7 +155,6 @@ impl GraphRepository for Neo4jGraphRepository {
                 n.source_doc_id = $source_doc_id,
                 n.metadata = $metadata,
                 n.updated_at = datetime()
-            ON CREATE SET n.created_at = datetime()
             RETURN n
             "#,
             label
@@ -378,17 +378,17 @@ impl GraphRepository for Neo4jGraphRepository {
             MATCH (from {{id: $from_id}})
             MATCH (to {{id: $to_id}})
             MERGE (from)-[r:{}]->(to)
+            ON CREATE SET r.created_at = datetime()
             SET r.id = $id,
                 r.strength = $strength,
                 r.metadata = $metadata,
                 r.updated_at = datetime()
-            ON CREATE SET r.created_at = datetime()
             RETURN r
             "#,
             rel_type
         );
 
-        let _ = self
+        let mut result = self
             .graph
             .execute(
                 query(&cypher)
@@ -400,6 +400,19 @@ impl GraphRepository for Neo4jGraphRepository {
             )
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j edge upsert failed: {}", e)))?;
+
+        // Verify the edge was actually created (MATCH found both nodes)
+        if result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+            .is_none()
+        {
+            return Err(DomainError::Repository(format!(
+                "Edge creation failed: source node {} or target node {} not found",
+                edge.from_id, edge.to_id
+            )));
+        }
 
         Ok(edge.clone())
     }
