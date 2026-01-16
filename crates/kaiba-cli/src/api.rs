@@ -1,8 +1,10 @@
 //! Kaiba API Client
 
 use anyhow::{bail, Context, Result};
+use chrono::{DateTime, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// API Client for Kaiba
@@ -138,6 +140,195 @@ pub struct WebhookDeliveryResponse {
     pub created_at: String,
     #[allow(dead_code)]
     pub completed_at: Option<String>,
+}
+
+// ============================================
+// Document API Types
+// ============================================
+
+#[derive(Debug, Serialize)]
+pub struct DocumentInput {
+    pub title: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IngestDocumentsRequest {
+    pub documents: Vec<DocumentInput>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteDocumentsRequest {
+    pub doc_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DocumentSummary {
+    pub id: Uuid,
+    pub title: String,
+    pub source_path: Option<String>,
+    #[allow(dead_code)]
+    pub checksum: String,
+    #[allow(dead_code)]
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DocumentResponse {
+    pub id: Uuid,
+    #[allow(dead_code)]
+    pub rei_id: Uuid,
+    pub title: String,
+    pub raw_content: String,
+    pub source_path: Option<String>,
+    #[allow(dead_code)]
+    pub checksum: String,
+    #[allow(dead_code)]
+    pub metadata: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DocumentSaveResult {
+    pub doc_id: Uuid,
+    pub title: String,
+    pub status: String,
+    #[allow(dead_code)]
+    pub emphasis: Option<EmphasisStats>,
+    #[allow(dead_code)]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EmphasisStats {
+    #[allow(dead_code)]
+    pub bold: usize,
+    #[allow(dead_code)]
+    pub italic: usize,
+    #[allow(dead_code)]
+    pub bold_italic: usize,
+    #[allow(dead_code)]
+    pub code: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IngestSummary {
+    pub total: usize,
+    pub created: usize,
+    pub updated: usize,
+    pub unchanged: usize,
+    #[allow(dead_code)]
+    pub failed: usize,
+    pub total_emphasis_nodes: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IngestDocumentsResponse {
+    pub results: Vec<DocumentSaveResult>,
+    pub summary: IngestSummary,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteDocumentsResponse {
+    pub deleted: usize,
+    pub not_found: Vec<Uuid>,
+}
+
+// ============================================
+// Graph API Types
+// ============================================
+
+#[derive(Debug, Serialize)]
+pub struct RebuildGraphRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub doc_ids: Option<Vec<Uuid>>,
+    #[serde(default)]
+    pub clear_existing: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IncrementalRebuildRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub since: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RebuildGraphResponse {
+    pub documents_processed: usize,
+    pub nodes_created: usize,
+    pub edges_created: usize,
+    pub nodes_skipped: usize,
+    pub errors: Vec<String>,
+    pub duration_ms: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IncrementalRebuildResponse {
+    pub documents_found: usize,
+    pub documents_processed: usize,
+    pub nodes_created: usize,
+    pub edges_created: usize,
+    pub errors: Vec<String>,
+    pub duration_ms: u64,
+    pub since: DateTime<Utc>,
+    pub until: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GraphStatsResponse {
+    pub total_nodes: usize,
+    pub total_edges: usize,
+    pub nodes_by_type: HashMap<String, usize>,
+    pub edges_by_type: HashMap<String, usize>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GraphNodeSummary {
+    pub id: Uuid,
+    pub text: String,
+    pub node_type: String,
+    pub weight: f32,
+    pub source_doc_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GraphEdgeSummary {
+    pub from_id: Uuid,
+    pub to_id: Uuid,
+    pub edge_type: String,
+    pub strength: f32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct NodeNeighborsResponse {
+    pub node: GraphNodeSummary,
+    pub neighbors: Vec<GraphNodeSummary>,
+    pub edges: Vec<GraphEdgeSummary>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GraphExportResponse {
+    pub nodes: Vec<GraphNodeSummary>,
+    pub edges: Vec<GraphEdgeSummary>,
+    pub stats: GraphStatsResponse,
+    #[allow(dead_code)]
+    pub metadata: GraphExportMetadata,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GraphExportMetadata {
+    #[allow(dead_code)]
+    pub rei_id: Uuid,
+    #[allow(dead_code)]
+    pub exported_at: DateTime<Utc>,
+    #[allow(dead_code)]
+    pub format_version: String,
 }
 
 impl KaibaClient {
@@ -515,5 +706,257 @@ impl KaibaClient {
             resp.json().await.context("Failed to parse response")?;
 
         Ok(deliveries)
+    }
+
+    // ============================================
+    // Document API
+    // ============================================
+
+    /// List documents for a Rei
+    pub async fn list_documents(&self, rei_id: &str) -> Result<Vec<DocumentSummary>> {
+        let url = format!("{}/kaiba/rei/{}/documents", self.base_url, rei_id);
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let docs: Vec<DocumentSummary> = resp.json().await.context("Failed to parse response")?;
+        Ok(docs)
+    }
+
+    /// Get a single document
+    pub async fn get_document(&self, rei_id: &str, doc_id: &str) -> Result<DocumentResponse> {
+        let url = format!(
+            "{}/kaiba/rei/{}/documents/{}",
+            self.base_url, rei_id, doc_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let doc: DocumentResponse = resp.json().await.context("Failed to parse response")?;
+        Ok(doc)
+    }
+
+    /// Ingest documents (batch)
+    pub async fn ingest_documents(
+        &self,
+        rei_id: &str,
+        documents: Vec<DocumentInput>,
+    ) -> Result<IngestDocumentsResponse> {
+        let url = format!("{}/kaiba/rei/{}/documents", self.base_url, rei_id);
+
+        let request = IngestDocumentsRequest { documents };
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let result: IngestDocumentsResponse =
+            resp.json().await.context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    /// Delete documents (batch)
+    pub async fn delete_documents(
+        &self,
+        rei_id: &str,
+        doc_ids: Vec<Uuid>,
+    ) -> Result<DeleteDocumentsResponse> {
+        let url = format!("{}/kaiba/rei/{}/documents", self.base_url, rei_id);
+
+        let request = DeleteDocumentsRequest { doc_ids };
+
+        let resp = self
+            .client
+            .delete(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let result: DeleteDocumentsResponse =
+            resp.json().await.context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    // ============================================
+    // Graph API
+    // ============================================
+
+    /// Get graph statistics
+    pub async fn get_graph_stats(&self, rei_id: &str) -> Result<GraphStatsResponse> {
+        let url = format!("{}/kaiba/rei/{}/graph/stats", self.base_url, rei_id);
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let stats: GraphStatsResponse = resp.json().await.context("Failed to parse response")?;
+        Ok(stats)
+    }
+
+    /// Rebuild knowledge graph
+    pub async fn rebuild_graph(
+        &self,
+        rei_id: &str,
+        doc_ids: Option<Vec<Uuid>>,
+        clear_existing: bool,
+    ) -> Result<RebuildGraphResponse> {
+        let url = format!("{}/kaiba/rei/{}/graph/rebuild", self.base_url, rei_id);
+
+        let request = RebuildGraphRequest {
+            doc_ids,
+            clear_existing,
+        };
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let result: RebuildGraphResponse = resp.json().await.context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    /// Incremental graph rebuild
+    pub async fn incremental_rebuild(
+        &self,
+        rei_id: &str,
+        since: Option<DateTime<Utc>>,
+    ) -> Result<IncrementalRebuildResponse> {
+        let url = format!("{}/kaiba/rei/{}/graph/incremental", self.base_url, rei_id);
+
+        let request = IncrementalRebuildRequest { since };
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&request)
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let result: IncrementalRebuildResponse =
+            resp.json().await.context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    /// Export graph for visualization
+    pub async fn export_graph(&self, rei_id: &str) -> Result<GraphExportResponse> {
+        let url = format!("{}/kaiba/rei/{}/graph/export", self.base_url, rei_id);
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let result: GraphExportResponse = resp.json().await.context("Failed to parse response")?;
+        Ok(result)
+    }
+
+    /// Get node neighbors
+    pub async fn get_node_neighbors(
+        &self,
+        rei_id: &str,
+        node_id: &str,
+    ) -> Result<NodeNeighborsResponse> {
+        let url = format!(
+            "{}/kaiba/rei/{}/graph/nodes/{}/neighbors",
+            self.base_url, rei_id, node_id
+        );
+
+        let resp = self
+            .client
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .send()
+            .await
+            .context("Failed to connect to Kaiba API")?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            bail!("API error ({}): {}", status, body);
+        }
+
+        let result: NodeNeighborsResponse =
+            resp.json().await.context("Failed to parse response")?;
+        Ok(result)
     }
 }

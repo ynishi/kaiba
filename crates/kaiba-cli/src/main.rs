@@ -6,12 +6,14 @@ mod api;
 mod config;
 
 use anyhow::{bail, Context, Result};
+use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use dialoguer::{Input, Password};
 use std::fs;
+use uuid::Uuid;
 
-use api::KaibaClient;
+use api::{DocumentInput, KaibaClient};
 use config::Config;
 
 #[derive(Parser)]
@@ -77,6 +79,18 @@ enum Commands {
 
     /// Show current configuration
     Config,
+
+    /// Document operations (GraphKai source)
+    Doc {
+        #[command(subcommand)]
+        action: DocAction,
+    },
+
+    /// Knowledge graph operations
+    Graph {
+        #[command(subcommand)]
+        action: GraphAction,
+    },
 }
 
 #[derive(Subcommand)]
@@ -228,6 +242,94 @@ enum WebhookAction {
     },
 }
 
+#[derive(Subcommand)]
+enum DocAction {
+    /// List all documents
+    List {
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Get a document by ID
+    Get {
+        /// Document ID
+        doc_id: String,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+        /// Show full content
+        #[arg(long)]
+        full: bool,
+    },
+    /// Ingest documents from files
+    Ingest {
+        /// Files to ingest (Markdown)
+        files: Vec<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Delete documents
+    Delete {
+        /// Document IDs to delete
+        doc_ids: Vec<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum GraphAction {
+    /// Show graph statistics
+    Stats {
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Rebuild knowledge graph from documents
+    Rebuild {
+        /// Clear existing graph before rebuild
+        #[arg(long)]
+        clear: bool,
+        /// Only rebuild for specific document IDs (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        doc_ids: Vec<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Incremental rebuild (only modified documents)
+    Incremental {
+        /// Process documents modified in the last N hours (default: 1)
+        #[arg(long, default_value = "1")]
+        hours: i64,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Export graph for visualization
+    Export {
+        /// Output format: json, dot
+        #[arg(short, long, default_value = "json")]
+        format: String,
+        /// Output file (stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+    /// Get neighbors of a node
+    Neighbors {
+        /// Node ID
+        node_id: String,
+        /// Profile to use
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -246,6 +348,8 @@ async fn main() -> Result<()> {
             verbose,
         } => cmd_prompt(format, include_memories, context, profile, verbose).await,
         Commands::Config => cmd_config(),
+        Commands::Doc { action } => cmd_doc(action).await,
+        Commands::Graph { action } => cmd_graph(action).await,
     }
 }
 
@@ -826,4 +930,461 @@ async fn cmd_webhook(action: WebhookAction) -> Result<()> {
     }
 
     Ok(())
+}
+
+// ============================================
+// Document Commands
+// ============================================
+
+async fn cmd_doc(action: DocAction) -> Result<()> {
+    let config = Config::load()?;
+    let api_key = config
+        .api_key
+        .as_ref()
+        .context("Not logged in. Run 'kaiba login' first.")?;
+
+    let client = KaibaClient::new(&config.base_url, api_key);
+
+    match action {
+        DocAction::List { profile } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let docs = client.list_documents(&rei_id).await?;
+
+            if docs.is_empty() {
+                println!("No documents found.");
+                return Ok(());
+            }
+
+            let profile_name = profile
+                .as_deref()
+                .or(config.default_profile.as_deref())
+                .unwrap_or("default");
+
+            println!("{} ({}):", "Documents".bold(), profile_name.cyan());
+            for doc in docs {
+                let source = doc.source_path.as_deref().unwrap_or("-").dimmed();
+                println!(
+                    "  {} {} {}",
+                    doc.id.to_string()[..8].dimmed(),
+                    doc.title.cyan().bold(),
+                    source
+                );
+                println!(
+                    "    Updated: {}",
+                    doc.updated_at.format("%Y-%m-%d %H:%M").to_string().dimmed()
+                );
+            }
+        }
+
+        DocAction::Get {
+            doc_id,
+            profile,
+            full,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let doc = client.get_document(&rei_id, &doc_id).await?;
+
+            println!("{}: {}", "Title".bold(), doc.title.cyan());
+            println!("{}: {}", "ID".bold(), doc.id);
+            if let Some(path) = &doc.source_path {
+                println!("{}: {}", "Source".bold(), path.dimmed());
+            }
+            println!(
+                "{}: {}",
+                "Created".bold(),
+                doc.created_at.format("%Y-%m-%d %H:%M")
+            );
+            println!(
+                "{}: {}",
+                "Updated".bold(),
+                doc.updated_at.format("%Y-%m-%d %H:%M")
+            );
+
+            if full {
+                println!("\n{}", "Content:".bold());
+                println!("{}", doc.raw_content);
+            } else {
+                println!("\n{}", "Preview:".bold());
+                println!("{}", truncate_string(&doc.raw_content, 200).dimmed());
+                println!("\n{}", "(use --full to see complete content)".dimmed());
+            }
+        }
+
+        DocAction::Ingest { files, profile } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            if files.is_empty() {
+                bail!("No files specified. Usage: kaiba doc ingest <file1> [file2] ...");
+            }
+
+            let mut documents = Vec::new();
+            for file_path in &files {
+                let content = fs::read_to_string(file_path)
+                    .with_context(|| format!("Failed to read file: {}", file_path))?;
+
+                // Extract title from filename or first heading
+                let title = extract_title(&content, file_path);
+
+                documents.push(DocumentInput {
+                    title,
+                    content,
+                    source_path: Some(file_path.clone()),
+                    metadata: None,
+                });
+            }
+
+            let result = client.ingest_documents(&rei_id, documents).await?;
+
+            println!(
+                "{} Ingested {} documents:",
+                "✓".green(),
+                result.summary.total
+            );
+            println!(
+                "  Created: {}, Updated: {}, Unchanged: {}",
+                result.summary.created.to_string().green(),
+                result.summary.updated.to_string().yellow(),
+                result.summary.unchanged.to_string().dimmed()
+            );
+            println!(
+                "  Emphasis nodes extracted: {}",
+                result.summary.total_emphasis_nodes.to_string().cyan()
+            );
+
+            for res in &result.results {
+                let status_badge = match res.status.as_str() {
+                    "created" => "✓".green(),
+                    "updated" => "↑".yellow(),
+                    "unchanged" => "=".dimmed(),
+                    _ => "?".dimmed(),
+                };
+                println!(
+                    "  {} {} [{}]",
+                    status_badge,
+                    res.title.cyan(),
+                    res.doc_id.to_string()[..8].dimmed()
+                );
+            }
+        }
+
+        DocAction::Delete { doc_ids, profile } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            if doc_ids.is_empty() {
+                bail!("No document IDs specified. Usage: kaiba doc delete <doc_id1> [doc_id2] ...");
+            }
+
+            let uuids: Vec<Uuid> = doc_ids
+                .iter()
+                .map(|id| id.parse::<Uuid>())
+                .collect::<Result<Vec<_>, _>>()
+                .context("Invalid document ID format. Expected UUID.")?;
+
+            let result = client.delete_documents(&rei_id, uuids).await?;
+
+            println!(
+                "{} Deleted {} documents",
+                "✓".green(),
+                result.deleted.to_string().green()
+            );
+            if !result.not_found.is_empty() {
+                println!("  {} not found: {}", "⚠".yellow(), result.not_found.len());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Extract title from markdown content or filename
+fn extract_title(content: &str, file_path: &str) -> String {
+    // Try to find first heading
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if let Some(heading) = trimmed.strip_prefix("# ") {
+            return heading.trim().to_string();
+        }
+    }
+    // Fall back to filename without extension
+    std::path::Path::new(file_path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Untitled")
+        .to_string()
+}
+
+// ============================================
+// Graph Commands
+// ============================================
+
+async fn cmd_graph(action: GraphAction) -> Result<()> {
+    let config = Config::load()?;
+    let api_key = config
+        .api_key
+        .as_ref()
+        .context("Not logged in. Run 'kaiba login' first.")?;
+
+    let client = KaibaClient::new(&config.base_url, api_key);
+
+    match action {
+        GraphAction::Stats { profile } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let stats = client.get_graph_stats(&rei_id).await?;
+
+            let profile_name = profile
+                .as_deref()
+                .or(config.default_profile.as_deref())
+                .unwrap_or("default");
+
+            println!("{} ({}):", "Graph Statistics".bold(), profile_name.cyan());
+            println!("  Total Nodes: {}", stats.total_nodes.to_string().green());
+            println!("  Total Edges: {}", stats.total_edges.to_string().green());
+
+            if !stats.nodes_by_type.is_empty() {
+                println!("\n  {}:", "Nodes by Type".bold());
+                for (node_type, count) in &stats.nodes_by_type {
+                    println!("    {}: {}", node_type.cyan(), count);
+                }
+            }
+
+            if !stats.edges_by_type.is_empty() {
+                println!("\n  {}:", "Edges by Type".bold());
+                for (edge_type, count) in &stats.edges_by_type {
+                    println!("    {}: {}", edge_type.cyan(), count);
+                }
+            }
+        }
+
+        GraphAction::Rebuild {
+            clear,
+            doc_ids,
+            profile,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let doc_id_uuids = if doc_ids.is_empty() {
+                None
+            } else {
+                Some(
+                    doc_ids
+                        .iter()
+                        .map(|id| id.parse::<Uuid>())
+                        .collect::<Result<Vec<_>, _>>()
+                        .context("Invalid document ID format. Expected UUID.")?,
+                )
+            };
+
+            println!("Rebuilding graph...");
+            let result = client.rebuild_graph(&rei_id, doc_id_uuids, clear).await?;
+
+            println!("{} Graph rebuilt in {}ms:", "✓".green(), result.duration_ms);
+            println!(
+                "  Documents processed: {}",
+                result.documents_processed.to_string().green()
+            );
+            println!(
+                "  Nodes created: {}",
+                result.nodes_created.to_string().green()
+            );
+            println!(
+                "  Edges created: {}",
+                result.edges_created.to_string().green()
+            );
+            println!(
+                "  Nodes skipped: {}",
+                result.nodes_skipped.to_string().dimmed()
+            );
+
+            if !result.errors.is_empty() {
+                println!("\n  {}:", "Errors".red().bold());
+                for err in &result.errors {
+                    println!("    - {}", err.red());
+                }
+            }
+        }
+
+        GraphAction::Incremental { hours, profile } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let since = Utc::now() - Duration::hours(hours);
+
+            println!("Running incremental rebuild (last {} hours)...", hours);
+            let result = client.incremental_rebuild(&rei_id, Some(since)).await?;
+
+            println!(
+                "{} Incremental rebuild completed in {}ms:",
+                "✓".green(),
+                result.duration_ms
+            );
+            println!(
+                "  Documents found: {}",
+                result.documents_found.to_string().green()
+            );
+            println!(
+                "  Documents processed: {}",
+                result.documents_processed.to_string().green()
+            );
+            println!(
+                "  Nodes created: {}",
+                result.nodes_created.to_string().green()
+            );
+            println!(
+                "  Edges created: {}",
+                result.edges_created.to_string().green()
+            );
+            println!(
+                "  Time range: {} → {}",
+                result.since.format("%Y-%m-%d %H:%M").to_string().dimmed(),
+                result.until.format("%Y-%m-%d %H:%M").to_string().dimmed()
+            );
+
+            if !result.errors.is_empty() {
+                println!("\n  {}:", "Errors".red().bold());
+                for err in &result.errors {
+                    println!("    - {}", err.red());
+                }
+            }
+        }
+
+        GraphAction::Export {
+            format,
+            output,
+            profile,
+        } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let graph = client.export_graph(&rei_id).await?;
+
+            let output_str = match format.as_str() {
+                "dot" => generate_dot(&graph),
+                _ => serde_json::to_string_pretty(&graph)
+                    .context("Failed to serialize graph to JSON")?,
+            };
+
+            match output {
+                Some(path) => {
+                    fs::write(&path, &output_str)
+                        .with_context(|| format!("Failed to write to {}", path))?;
+                    println!(
+                        "{} Graph exported to {} ({} nodes, {} edges)",
+                        "✓".green(),
+                        path.cyan(),
+                        graph.stats.total_nodes,
+                        graph.stats.total_edges
+                    );
+                }
+                None => {
+                    println!("{}", output_str);
+                }
+            }
+        }
+
+        GraphAction::Neighbors { node_id, profile } => {
+            let rei_id = config.get_rei_id(profile.as_deref()).context(
+                "No profile specified and no default profile set. Use -p <profile> or set a default.",
+            )?;
+
+            let result = client.get_node_neighbors(&rei_id, &node_id).await?;
+
+            println!(
+                "{}: {} [{}]",
+                "Node".bold(),
+                result.node.text.cyan().bold(),
+                result.node.node_type.dimmed()
+            );
+            println!("  ID: {}", result.node.id);
+            println!("  Weight: {:.2}", result.node.weight);
+
+            if result.neighbors.is_empty() {
+                println!("\n  No neighbors found.");
+            } else {
+                println!("\n  {} ({}):", "Neighbors".bold(), result.neighbors.len());
+                for neighbor in &result.neighbors {
+                    println!(
+                        "    {} [{}] (w: {:.2})",
+                        neighbor.text.cyan(),
+                        neighbor.node_type.dimmed(),
+                        neighbor.weight
+                    );
+                }
+            }
+
+            if !result.edges.is_empty() {
+                println!("\n  {} ({}):", "Edges".bold(), result.edges.len());
+                for edge in &result.edges {
+                    let direction = if edge.from_id == result.node.id {
+                        "→"
+                    } else {
+                        "←"
+                    };
+                    println!(
+                        "    {} {} (strength: {:.2})",
+                        direction,
+                        edge.edge_type.cyan(),
+                        edge.strength
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Generate DOT format for Graphviz
+fn generate_dot(graph: &api::GraphExportResponse) -> String {
+    let mut dot = String::from("digraph GraphKai {\n");
+    dot.push_str("  rankdir=LR;\n");
+    dot.push_str("  node [shape=box, style=rounded];\n\n");
+
+    // Add nodes
+    for node in &graph.nodes {
+        let label = node.text.replace('"', "\\\"");
+        let color = match node.node_type.as_str() {
+            "document" => "lightblue",
+            "concept" => "lightgreen",
+            _ => "white",
+        };
+        dot.push_str(&format!(
+            "  \"{}\" [label=\"{}\", fillcolor={}, style=\"filled,rounded\"];\n",
+            node.id, label, color
+        ));
+    }
+
+    dot.push('\n');
+
+    // Add edges
+    for edge in &graph.edges {
+        let style = match edge.edge_type.as_str() {
+            "extracted_from" => "dashed",
+            "co_occurs_with" => "solid",
+            _ => "dotted",
+        };
+        dot.push_str(&format!(
+            "  \"{}\" -> \"{}\" [label=\"{}\", style={}];\n",
+            edge.from_id, edge.to_id, edge.edge_type, style
+        ));
+    }
+
+    dot.push_str("}\n");
+    dot
 }
