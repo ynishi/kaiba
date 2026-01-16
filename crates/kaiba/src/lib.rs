@@ -34,6 +34,8 @@ pub use domain::{
     // GraphKai - Emphasis types
     EmphasisNode, EmphasisParseResult, EmphasisParser, EmphasisParserConfig, EmphasisStyle,
     TextPosition,
+    // GraphKai - Graph types
+    EdgeType, GraphEdge, GraphNode, GraphPath, NodeType,
 };
 pub use ports::{
     // Tei Services (体 - execution interfaces)
@@ -61,4 +63,6 @@ pub use ports::{
     WebSearchResult,
     WebSearchService,
     WebhookDeliveryConfig,
+    // GraphKai - Graph repository
+    EdgeBatchResult, GraphRepository, GraphStats, NodeBatchResult, TraversalQuery,
 };

@@ -6,6 +6,7 @@
 //! - Memory: Long-term storage
 //! - Document: Raw Markdown source (GraphKai)
 //! - EmphasisNode: Extracted emphasis for semantic linking
+//! - GraphNode/GraphEdge: Knowledge graph entities (GraphKai)
 //! - Call: LLM invocation record
 //! - Prompt: Prompt templates
 //! - Message: Platform integration message
@@ -14,6 +15,7 @@
 mod call;
 mod document;
 mod emphasis_node;
+mod graph;
 mod memory;
 mod message;
 mod prompt;
@@ -24,6 +26,7 @@ mod webhook;
 pub use call::*;
 pub use document::*;
 pub use emphasis_node::*;
+pub use graph::*;
 pub use memory::*;
 pub use message::*;
 pub use prompt::*;
