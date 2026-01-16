@@ -4,7 +4,27 @@ name = "kaiba"
 # Shuttle project configuration
 
 [deploy]
-# Environment variables via Shuttle Secrets:
-# shuttle secrets set KAIBA_API_KEY="your-secret-key"
-# shuttle secrets set QDRANT_URL="https://your-qdrant-url"
-# shuttle secrets set QDRANT_API_KEY="your-qdrant-api-key"
+# ============================================
+# Shuttle Secrets Configuration
+# ============================================
+# Set secrets via CLI: shuttle secrets set KEY="value"
+# Or create Secrets.toml (gitignored) for local dev
+#
+# Required:
+#   KAIBA_API_KEY       - API authentication key
+#
+# MemoryKai (Qdrant):
+#   QDRANT_URL          - Qdrant Cloud URL
+#   QDRANT_API_KEY      - Qdrant API key
+#
+# GraphKai (Neo4j):
+#   NEO4J_URI           - Neo4j Aura connection URI (neo4j+s://...)
+#   NEO4J_USER          - Neo4j username (usually "neo4j")
+#   NEO4J_PASSWORD      - Neo4j password
+#
+# Embedding & Search:
+#   OPENAI_API_KEY      - OpenAI API key for embeddings
+#   GEMINI_API_KEY      - Google Gemini API key for web search
+#
+# Optional:
+#   LEARNING_INTERVAL_SECS - Autonomous learning interval (default: 3600)
