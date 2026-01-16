@@ -13,7 +13,10 @@ mod models;
 mod routes;
 mod services;
 
-use adapters::{HttpWebhook, PgDocRepository, PgReiRepository, PgReiWebhookRepository, PgTeiRepository};
+use adapters::{
+    HttpWebhook, Neo4jGraphRepository, PgDocRepository, PgReiRepository, PgReiWebhookRepository,
+    PgTeiRepository,
+};
 use application::{ReiService, TeiService};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
@@ -32,6 +35,7 @@ pub struct AppState {
     pub tei_service: Arc<AppTeiService>,
     pub doc_store: Option<Arc<PgDocRepository>>,
     pub memory_kai: Option<Arc<MemoryKai>>,
+    pub graph_kai: Option<Arc<Neo4jGraphRepository>>,
     pub embedding: Option<EmbeddingService>,
     pub web_search: Option<WebSearchAgent>,
     pub webhook_repo: Arc<PgReiWebhookRepository>,
@@ -121,6 +125,30 @@ async fn main(
         tracing::warn!("⚠️  No GEMINI_API_KEY set - WebSearch disabled");
     }
 
+    // Initialize GraphKai (Neo4j) if configured
+    let graph_kai = match (
+        secrets.get("NEO4J_URI"),
+        secrets.get("NEO4J_USER"),
+        secrets.get("NEO4J_PASSWORD"),
+    ) {
+        (Some(uri), Some(user), Some(password)) => {
+            match Neo4jGraphRepository::new(&uri, &user, &password).await {
+                Ok(repo) => {
+                    tracing::info!("🕸️  GraphKai (知識網) connected to Neo4j");
+                    Some(Arc::new(repo))
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️  Failed to connect to GraphKai: {}", e);
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::warn!("⚠️  No NEO4J_* credentials set - GraphKai disabled");
+            None
+        }
+    };
+
     // Initialize application services
     let rei_repo = Arc::new(PgReiRepository::new(pool.clone()));
     let tei_repo = Arc::new(PgTeiRepository::new(pool.clone()));
@@ -140,6 +168,7 @@ async fn main(
         tei_service,
         doc_store: Some(doc_store),
         memory_kai: memory_kai.clone(),
+        graph_kai,
         embedding: embedding.clone(),
         web_search: web_search.clone(),
         webhook_repo,
