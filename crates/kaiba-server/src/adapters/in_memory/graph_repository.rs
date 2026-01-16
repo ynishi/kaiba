@@ -2,6 +2,8 @@
 //!
 //! Thread-safe mock that stores all graph data in memory.
 
+#![allow(dead_code)]
+
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -56,17 +58,19 @@ impl GraphRepository for InMemoryGraphRepository {
     // ===================
 
     async fn upsert_node(&self, node: &GraphNode) -> Result<GraphNode, DomainError> {
-        let mut nodes = self.nodes.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut nodes = self
+            .nodes
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
         nodes.insert(node.id, node.clone());
         Ok(node.clone())
     }
 
     async fn upsert_nodes(&self, nodes: &[GraphNode]) -> Result<NodeBatchResult, DomainError> {
-        let mut store = self.nodes.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut store = self
+            .nodes
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
         let mut created = 0;
         let mut updated = 0;
 
@@ -87,9 +91,10 @@ impl GraphRepository for InMemoryGraphRepository {
     }
 
     async fn get_node(&self, id: Uuid) -> Result<Option<GraphNode>, DomainError> {
-        let nodes = self.nodes.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let nodes = self
+            .nodes
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
         Ok(nodes.get(&id).cloned())
     }
 
@@ -100,9 +105,10 @@ impl GraphRepository for InMemoryGraphRepository {
         node_type: Option<NodeType>,
         limit: usize,
     ) -> Result<Vec<GraphNode>, DomainError> {
-        let nodes = self.nodes.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let nodes = self
+            .nodes
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
         let text_lower = text.to_lowercase();
 
         let results: Vec<GraphNode> = nodes
@@ -110,7 +116,7 @@ impl GraphRepository for InMemoryGraphRepository {
             .filter(|n| {
                 n.rei_id == rei_id
                     && n.text.to_lowercase().contains(&text_lower)
-                    && node_type.as_ref().map_or(true, |t| &n.node_type == t)
+                    && node_type.as_ref().is_none_or(|t| &n.node_type == t)
             })
             .take(limit)
             .cloned()
@@ -125,9 +131,10 @@ impl GraphRepository for InMemoryGraphRepository {
         node_type: NodeType,
         limit: usize,
     ) -> Result<Vec<GraphNode>, DomainError> {
-        let nodes = self.nodes.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let nodes = self
+            .nodes
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let results: Vec<GraphNode> = nodes
             .values()
@@ -140,12 +147,14 @@ impl GraphRepository for InMemoryGraphRepository {
     }
 
     async fn delete_node(&self, id: Uuid) -> Result<bool, DomainError> {
-        let mut nodes = self.nodes.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
-        let mut edges = self.edges.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut nodes = self
+            .nodes
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
+        let mut edges = self
+            .edges
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         // Remove all edges connected to this node
         edges.retain(|(from, to), _| *from != id && *to != id);
@@ -154,12 +163,14 @@ impl GraphRepository for InMemoryGraphRepository {
     }
 
     async fn delete_nodes_by_document(&self, doc_id: Uuid) -> Result<usize, DomainError> {
-        let mut nodes = self.nodes.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
-        let mut edges = self.edges.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut nodes = self
+            .nodes
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
+        let mut edges = self
+            .edges
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         // Find nodes to delete
         let node_ids: Vec<Uuid> = nodes
@@ -187,17 +198,19 @@ impl GraphRepository for InMemoryGraphRepository {
     // ===================
 
     async fn upsert_edge(&self, edge: &GraphEdge) -> Result<GraphEdge, DomainError> {
-        let mut edges = self.edges.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut edges = self
+            .edges
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
         edges.insert((edge.from_id, edge.to_id), edge.clone());
         Ok(edge.clone())
     }
 
     async fn upsert_edges(&self, edges: &[GraphEdge]) -> Result<EdgeBatchResult, DomainError> {
-        let mut store = self.edges.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut store = self
+            .edges
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
         let mut created = 0;
         let mut existing = 0;
 
@@ -223,14 +236,15 @@ impl GraphRepository for InMemoryGraphRepository {
         node_id: Uuid,
         edge_type: Option<EdgeType>,
     ) -> Result<Vec<GraphEdge>, DomainError> {
-        let edges = self.edges.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let edges = self
+            .edges
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let results: Vec<GraphEdge> = edges
             .iter()
             .filter(|((from, _), e)| {
-                *from == node_id && edge_type.as_ref().map_or(true, |t| &e.edge_type == t)
+                *from == node_id && edge_type.as_ref().is_none_or(|t| &e.edge_type == t)
             })
             .map(|(_, e)| e.clone())
             .collect();
@@ -243,14 +257,15 @@ impl GraphRepository for InMemoryGraphRepository {
         node_id: Uuid,
         edge_type: Option<EdgeType>,
     ) -> Result<Vec<GraphEdge>, DomainError> {
-        let edges = self.edges.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let edges = self
+            .edges
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let results: Vec<GraphEdge> = edges
             .iter()
             .filter(|((_, to), e)| {
-                *to == node_id && edge_type.as_ref().map_or(true, |t| &e.edge_type == t)
+                *to == node_id && edge_type.as_ref().is_none_or(|t| &e.edge_type == t)
             })
             .map(|(_, e)| e.clone())
             .collect();
@@ -259,9 +274,10 @@ impl GraphRepository for InMemoryGraphRepository {
     }
 
     async fn delete_edge(&self, from_id: Uuid, to_id: Uuid) -> Result<bool, DomainError> {
-        let mut edges = self.edges.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut edges = self
+            .edges
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
         Ok(edges.remove(&(from_id, to_id)).is_some())
     }
 
@@ -270,9 +286,10 @@ impl GraphRepository for InMemoryGraphRepository {
             return Ok(vec![]);
         }
 
-        let edges = self.edges.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let edges = self
+            .edges
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let node_id_set: std::collections::HashSet<Uuid> = node_ids.iter().copied().collect();
 
@@ -298,12 +315,14 @@ impl GraphRepository for InMemoryGraphRepository {
             return Ok(vec![]);
         }
 
-        let nodes = self.nodes.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
-        let edges = self.edges.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let nodes = self
+            .nodes
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
+        let edges = self
+            .edges
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let mut visited: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
         let mut current_layer: Vec<Uuid> = vec![node_id];
@@ -351,12 +370,14 @@ impl GraphRepository for InMemoryGraphRepository {
         start_id: Uuid,
         query: &TraversalQuery,
     ) -> Result<Vec<GraphPath>, DomainError> {
-        let nodes = self.nodes.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
-        let edges = self.edges.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let nodes = self
+            .nodes
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
+        let edges = self
+            .edges
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let start_node = match nodes.get(&start_id) {
             Some(n) => n.clone(),
@@ -443,9 +464,10 @@ impl GraphRepository for InMemoryGraphRepository {
         limit: usize,
     ) -> Result<Vec<(GraphNode, f32)>, DomainError> {
         // Simplified: just return nodes for the rei_id with mock similarity scores
-        let nodes = self.nodes.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let nodes = self
+            .nodes
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let results: Vec<(GraphNode, f32)> = nodes
             .values()
@@ -462,12 +484,14 @@ impl GraphRepository for InMemoryGraphRepository {
     // ===================
 
     async fn clear_rei_graph(&self, rei_id: Uuid) -> Result<usize, DomainError> {
-        let mut nodes = self.nodes.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
-        let mut edges = self.edges.write().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let mut nodes = self
+            .nodes
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
+        let mut edges = self
+            .edges
+            .write()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         // Find nodes to delete
         let node_ids: Vec<Uuid> = nodes
@@ -491,12 +515,14 @@ impl GraphRepository for InMemoryGraphRepository {
     }
 
     async fn get_stats(&self, rei_id: Uuid) -> Result<GraphStats, DomainError> {
-        let nodes = self.nodes.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
-        let edges = self.edges.read().map_err(|e| {
-            DomainError::Repository(format!("RwLock poisoned: {}", e))
-        })?;
+        let nodes = self
+            .nodes
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
+        let edges = self
+            .edges
+            .read()
+            .map_err(|e| DomainError::Repository(format!("RwLock poisoned: {}", e)))?;
 
         let rei_nodes: Vec<&GraphNode> = nodes.values().filter(|n| n.rei_id == rei_id).collect();
 
@@ -510,12 +536,12 @@ impl GraphRepository for InMemoryGraphRepository {
 
         let mut nodes_by_type: HashMap<NodeType, usize> = HashMap::new();
         for node in &rei_nodes {
-            *nodes_by_type.entry(node.node_type.clone()).or_insert(0) += 1;
+            *nodes_by_type.entry(node.node_type).or_insert(0) += 1;
         }
 
         let mut edges_by_type: HashMap<EdgeType, usize> = HashMap::new();
         for edge in &rei_edges {
-            *edges_by_type.entry(edge.edge_type.clone()).or_insert(0) += 1;
+            *edges_by_type.entry(edge.edge_type).or_insert(0) += 1;
         }
 
         Ok(GraphStats {

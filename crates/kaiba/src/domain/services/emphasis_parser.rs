@@ -62,8 +62,7 @@ impl EmphasisParser {
                     text_start_offset = range.start;
                 }
                 Event::End(TagEnd::Strong) => {
-                    if !current_text.is_empty()
-                        && current_text.len() >= self.config.min_text_length
+                    if !current_text.is_empty() && current_text.len() >= self.config.min_text_length
                     {
                         let style = if in_italic {
                             EmphasisStyle::BoldItalic
@@ -117,8 +116,7 @@ impl EmphasisParser {
                 Event::Code(code) => {
                     if code.len() >= self.config.min_text_length {
                         let position = self.calculate_position(content, range.start);
-                        let contextual_text =
-                            self.extract_context(content, range.start, range.end);
+                        let contextual_text = self.extract_context(content, range.start, range.end);
 
                         result.add_node(EmphasisNode::new(
                             doc_id,

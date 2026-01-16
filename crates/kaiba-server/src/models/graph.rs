@@ -28,6 +28,7 @@ pub struct RebuildGraphRequest {
 
 /// Request for graph search/traversal
 #[derive(Debug, Deserialize, ToSchema)]
+#[allow(dead_code)]
 pub struct GraphSearchRequest {
     /// Search query text
     pub query: String,

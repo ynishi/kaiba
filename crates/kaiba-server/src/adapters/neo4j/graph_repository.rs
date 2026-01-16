@@ -103,8 +103,8 @@ impl Neo4jGraphRepository {
             .and_then(|s: String| Uuid::parse_str(&s).ok());
 
         let metadata_str: String = node.get("metadata").unwrap_or_else(|_| "{}".to_string());
-        let metadata: serde_json::Value =
-            serde_json::from_str(&metadata_str).unwrap_or(serde_json::Value::Object(Default::default()));
+        let metadata: serde_json::Value = serde_json::from_str(&metadata_str)
+            .unwrap_or(serde_json::Value::Object(Default::default()));
 
         // Get node label for type
         let labels = node.labels();
@@ -140,7 +140,8 @@ impl GraphRepository for Neo4jGraphRepository {
             .embedding
             .as_ref()
             .map(|e| serde_json::to_string(e).unwrap_or_else(|_| "[]".to_string()));
-        let metadata_json = serde_json::to_string(&node.metadata).unwrap_or_else(|_| "{}".to_string());
+        let metadata_json =
+            serde_json::to_string(&node.metadata).unwrap_or_else(|_| "{}".to_string());
         let source_doc_id_str = node.source_doc_id.map(|id| id.to_string());
 
         let cypher = format!(
@@ -174,9 +175,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j upsert failed: {}", e)))?;
 
-        if let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             Self::row_to_node(&row, "n")
         } else {
             Ok(node.clone())
@@ -219,9 +222,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
-        if let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             Ok(Some(Self::row_to_node(&row, "n")?))
         } else {
             Ok(None)
@@ -261,9 +266,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
         let mut nodes = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             nodes.push(Self::row_to_node(&row, "n")?);
         }
 
@@ -300,9 +307,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
         let mut nodes = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             nodes.push(Self::row_to_node(&row, "n")?);
         }
 
@@ -322,9 +331,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j delete failed: {}", e)))?;
 
-        if let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             let deleted: i64 = row.get("deleted").unwrap_or(0);
             Ok(deleted > 0)
         } else {
@@ -345,9 +356,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j delete failed: {}", e)))?;
 
-        if let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             let deleted: i64 = row.get("deleted").unwrap_or(0);
             Ok(deleted as usize)
         } else {
@@ -357,7 +370,8 @@ impl GraphRepository for Neo4jGraphRepository {
 
     async fn upsert_edge(&self, edge: &GraphEdge) -> Result<GraphEdge, DomainError> {
         let rel_type = Self::edge_type_to_rel(edge.edge_type);
-        let metadata_json = serde_json::to_string(&edge.metadata).unwrap_or_else(|_| "{}".to_string());
+        let metadata_json =
+            serde_json::to_string(&edge.metadata).unwrap_or_else(|_| "{}".to_string());
 
         let cypher = format!(
             r#"
@@ -374,7 +388,8 @@ impl GraphRepository for Neo4jGraphRepository {
             rel_type
         );
 
-        let _ = self.graph
+        let _ = self
+            .graph
             .execute(
                 query(&cypher)
                     .param("id", edge.id.to_string())
@@ -432,12 +447,14 @@ impl GraphRepository for Neo4jGraphRepository {
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
         let mut edges = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
-            let rel: Relation = row.get("r").map_err(|e| {
-                DomainError::Repository(format!("Failed to get relation: {}", e))
-            })?;
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
+            let rel: Relation = row
+                .get("r")
+                .map_err(|e| DomainError::Repository(format!("Failed to get relation: {}", e)))?;
 
             let id_str: String = rel.get("id").unwrap_or_else(|_| Uuid::new_v4().to_string());
             let id = Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4());
@@ -454,8 +471,8 @@ impl GraphRepository for Neo4jGraphRepository {
             let strength: f64 = rel.get("strength").unwrap_or(1.0);
 
             let metadata_str: String = rel.get("metadata").unwrap_or_else(|_| "{}".to_string());
-            let metadata: serde_json::Value =
-                serde_json::from_str(&metadata_str).unwrap_or(serde_json::Value::Object(Default::default()));
+            let metadata: serde_json::Value = serde_json::from_str(&metadata_str)
+                .unwrap_or(serde_json::Value::Object(Default::default()));
 
             edges.push(GraphEdge {
                 id,
@@ -494,12 +511,14 @@ impl GraphRepository for Neo4jGraphRepository {
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
         let mut edges = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
-            let rel: Relation = row.get("r").map_err(|e| {
-                DomainError::Repository(format!("Failed to get relation: {}", e))
-            })?;
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
+            let rel: Relation = row
+                .get("r")
+                .map_err(|e| DomainError::Repository(format!("Failed to get relation: {}", e)))?;
 
             let id_str: String = rel.get("id").unwrap_or_else(|_| Uuid::new_v4().to_string());
             let id = Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4());
@@ -516,8 +535,8 @@ impl GraphRepository for Neo4jGraphRepository {
             let strength: f64 = rel.get("strength").unwrap_or(1.0);
 
             let metadata_str: String = rel.get("metadata").unwrap_or_else(|_| "{}".to_string());
-            let metadata: serde_json::Value =
-                serde_json::from_str(&metadata_str).unwrap_or(serde_json::Value::Object(Default::default()));
+            let metadata: serde_json::Value = serde_json::from_str(&metadata_str)
+                .unwrap_or(serde_json::Value::Object(Default::default()));
 
             edges.push(GraphEdge {
                 id,
@@ -549,9 +568,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j delete failed: {}", e)))?;
 
-        if let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             let deleted: i64 = row.get("deleted").unwrap_or(0);
             Ok(deleted > 0)
         } else {
@@ -579,12 +600,14 @@ impl GraphRepository for Neo4jGraphRepository {
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
         let mut edges = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
-            let rel: Relation = row.get("r").map_err(|e| {
-                DomainError::Repository(format!("Failed to get relation: {}", e))
-            })?;
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
+            let rel: Relation = row
+                .get("r")
+                .map_err(|e| DomainError::Repository(format!("Failed to get relation: {}", e)))?;
 
             let id_str: String = rel.get("id").unwrap_or_else(|_| Uuid::new_v4().to_string());
             let id = Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4());
@@ -601,8 +624,8 @@ impl GraphRepository for Neo4jGraphRepository {
             let strength: f64 = rel.get("strength").unwrap_or(1.0);
 
             let metadata_str: String = rel.get("metadata").unwrap_or_else(|_| "{}".to_string());
-            let metadata: serde_json::Value =
-                serde_json::from_str(&metadata_str).unwrap_or(serde_json::Value::Object(Default::default()));
+            let metadata: serde_json::Value = serde_json::from_str(&metadata_str)
+                .unwrap_or(serde_json::Value::Object(Default::default()));
 
             edges.push(GraphEdge {
                 id,
@@ -617,7 +640,11 @@ impl GraphRepository for Neo4jGraphRepository {
         Ok(edges)
     }
 
-    async fn get_neighbors(&self, node_id: Uuid, depth: u32) -> Result<Vec<GraphNode>, DomainError> {
+    async fn get_neighbors(
+        &self,
+        node_id: Uuid,
+        depth: u32,
+    ) -> Result<Vec<GraphNode>, DomainError> {
         let cypher = format!(
             r#"
             MATCH (start {{id: $node_id}})-[*1..{}]-(neighbor)
@@ -633,9 +660,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
         let mut nodes = Vec::new();
-        while let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             nodes.push(Self::row_to_node(&row, "n")?);
         }
 
@@ -654,14 +683,22 @@ impl GraphRepository for Neo4jGraphRepository {
             .edge_types
             .as_ref()
             .map(|types| {
-                let rels: Vec<String> = types.iter().map(|t| Self::edge_type_to_rel(*t).to_string()).collect();
+                let rels: Vec<String> = types
+                    .iter()
+                    .map(|t| Self::edge_type_to_rel(*t).to_string())
+                    .collect();
                 format!(":{}", rels.join("|"))
             })
             .unwrap_or_default();
 
         let strength_filter = query_params
             .min_strength
-            .map(|s| format!("WHERE ALL(r IN relationships(path) WHERE r.strength >= {})", s))
+            .map(|s| {
+                format!(
+                    "WHERE ALL(r IN relationships(path) WHERE r.strength >= {})",
+                    s
+                )
+            })
             .unwrap_or_default();
 
         let cypher = format!(
@@ -704,7 +741,9 @@ impl GraphRepository for Neo4jGraphRepository {
         // Neo4j Aura Free doesn't have vector index support
         // For now, return top nodes by weight
         // In production, use Neo4j Vector Index or external vector search
-        let nodes = self.find_nodes_by_type(rei_id, NodeType::Concept, limit).await?;
+        let nodes = self
+            .find_nodes_by_type(rei_id, NodeType::Concept, limit)
+            .await?;
         Ok(nodes.into_iter().map(|n| (n, 1.0)).collect())
     }
 
@@ -721,9 +760,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j delete failed: {}", e)))?;
 
-        if let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        if let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             let deleted: i64 = row.get("deleted").unwrap_or(0);
             Ok(deleted as usize)
         } else {
@@ -745,9 +786,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
         let mut stats = GraphStats::default();
-        while let Some(row) = result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        while let Some(row) = result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             let labels: Vec<String> = row.get("nodeLabels").unwrap_or_default();
             let count: i64 = row.get("nodeCount").unwrap_or(0);
 
@@ -770,9 +813,11 @@ impl GraphRepository for Neo4jGraphRepository {
             .await
             .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
 
-        while let Some(row) = edge_result.next().await.map_err(|e| {
-            DomainError::Repository(format!("Failed to get result: {}", e))
-        })? {
+        while let Some(row) = edge_result
+            .next()
+            .await
+            .map_err(|e| DomainError::Repository(format!("Failed to get result: {}", e)))?
+        {
             let rel_type: String = row.get("relType").unwrap_or_default();
             let count: i64 = row.get("relCount").unwrap_or(0);
 

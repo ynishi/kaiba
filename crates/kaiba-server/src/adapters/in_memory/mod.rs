@@ -4,4 +4,5 @@
 
 mod graph_repository;
 
+#[allow(unused_imports)]
 pub use graph_repository::InMemoryGraphRepository;

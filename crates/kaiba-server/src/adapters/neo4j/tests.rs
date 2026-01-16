@@ -63,7 +63,10 @@ mod tests {
         assert_eq!(updated.text, "updated concept");
 
         // Delete node
-        let deleted = repo.delete_node(node_id).await.expect("Failed to delete node");
+        let deleted = repo
+            .delete_node(node_id)
+            .await
+            .expect("Failed to delete node");
         assert!(deleted);
 
         // Verify deleted
@@ -84,8 +87,12 @@ mod tests {
         let node1 = GraphNode::concept(rei_id, "concept A".to_string(), 1.0, None);
         let node2 = GraphNode::concept(rei_id, "concept B".to_string(), 0.8, None);
 
-        repo.upsert_node(&node1).await.expect("Failed to save node1");
-        repo.upsert_node(&node2).await.expect("Failed to save node2");
+        repo.upsert_node(&node1)
+            .await
+            .expect("Failed to save node1");
+        repo.upsert_node(&node2)
+            .await
+            .expect("Failed to save node2");
 
         // Create edge
         let edge = GraphEdge::similar_to(node1.id, node2.id, 0.85);
@@ -135,7 +142,10 @@ mod tests {
             .map(|w| GraphEdge::similar_to(w[0].id, w[1].id, 0.9))
             .collect();
 
-        let edge_result = repo.upsert_edges(&edges).await.expect("Failed to batch edges");
+        let edge_result = repo
+            .upsert_edges(&edges)
+            .await
+            .expect("Failed to batch edges");
         assert_eq!(edge_result.created, 4);
 
         // Get stats

@@ -87,10 +87,22 @@ mod tests {
 
     #[test]
     fn test_from_str() {
-        assert_eq!("bold".parse::<EmphasisStyle>().unwrap(), EmphasisStyle::Bold);
-        assert_eq!("ITALIC".parse::<EmphasisStyle>().unwrap(), EmphasisStyle::Italic);
-        assert_eq!("bold_italic".parse::<EmphasisStyle>().unwrap(), EmphasisStyle::BoldItalic);
-        assert_eq!("code".parse::<EmphasisStyle>().unwrap(), EmphasisStyle::Code);
+        assert_eq!(
+            "bold".parse::<EmphasisStyle>().unwrap(),
+            EmphasisStyle::Bold
+        );
+        assert_eq!(
+            "ITALIC".parse::<EmphasisStyle>().unwrap(),
+            EmphasisStyle::Italic
+        );
+        assert_eq!(
+            "bold_italic".parse::<EmphasisStyle>().unwrap(),
+            EmphasisStyle::BoldItalic
+        );
+        assert_eq!(
+            "code".parse::<EmphasisStyle>().unwrap(),
+            EmphasisStyle::Code
+        );
     }
 
     #[test]

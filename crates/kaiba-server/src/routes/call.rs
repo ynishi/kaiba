@@ -248,11 +248,8 @@ fn spawn_hybrid_search(
         match hybrid.search(&rei_id, &query, Default::default()).await {
             Ok(result) => {
                 // Extract memories and their actual scores
-                let memories: Vec<Memory> = result
-                    .memories
-                    .iter()
-                    .map(|sm| sm.memory.clone())
-                    .collect();
+                let memories: Vec<Memory> =
+                    result.memories.iter().map(|sm| sm.memory.clone()).collect();
 
                 let refs: Vec<MemoryReference> = result
                     .memories
@@ -326,7 +323,10 @@ async fn search_memories_for_rag(
         })?;
 
     // Separate memories and build references with actual scores
-    let memories: Vec<Memory> = memories_with_scores.iter().map(|(m, _)| m.clone()).collect();
+    let memories: Vec<Memory> = memories_with_scores
+        .iter()
+        .map(|(m, _)| m.clone())
+        .collect();
     let refs: Vec<MemoryReference> = memories_with_scores
         .iter()
         .map(|(m, score)| MemoryReference {
@@ -335,7 +335,10 @@ async fn search_memories_for_rag(
         })
         .collect();
 
-    tracing::info!("RAG-only: Retrieved {} memories for context", memories.len());
+    tracing::info!(
+        "RAG-only: Retrieved {} memories for context",
+        memories.len()
+    );
 
     Ok((memories, refs))
 }

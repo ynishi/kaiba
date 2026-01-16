@@ -13,8 +13,8 @@ use kaiba::{DocRepository, Document, EmphasisParser, SaveStatus};
 
 use crate::models::{
     DeleteDocumentsRequest, DeleteDocumentsResponse, DocumentResponse, DocumentSaveResultDto,
-    DocumentStatus, DocumentSummary, EmphasisStats, IngestDocumentsRequest, IngestDocumentsResponse,
-    IngestSummary,
+    DocumentStatus, DocumentSummary, EmphasisStats, IngestDocumentsRequest,
+    IngestDocumentsResponse, IngestSummary,
 };
 use crate::AppState;
 
@@ -165,7 +165,9 @@ pub async fn list_documents(
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    Ok(Json(documents.into_iter().map(DocumentSummary::from).collect()))
+    Ok(Json(
+        documents.into_iter().map(DocumentSummary::from).collect(),
+    ))
 }
 
 /// Get a single document by ID

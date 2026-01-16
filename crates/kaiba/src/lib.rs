@@ -27,35 +27,69 @@ pub mod ports;
 
 // Re-export commonly used types
 pub use domain::{
-    // Entities
-    Call, DeliveryStatus, Document, DomainError, Memory, MemoryType, Message, Prompt, Provider,
-    Rei, ReiState, ReiTei, ReiWebhook, TagMatchMode, Tei, WebhookDelivery, WebhookEventType,
-    WebhookPayload,
-    // GraphKai - Emphasis types
-    EmphasisNode, EmphasisParseResult, EmphasisParser, EmphasisParserConfig, EmphasisStyle,
-    TextPosition,
     // GraphKai - Graph builder
-    BuildStats, GraphBuildResult, GraphBuilder,
+    BuildStats,
+    // Entities
+    Call,
+    DeliveryStatus,
+    Document,
+    DomainError,
     // GraphKai - Graph types
-    EdgeType, GraphEdge, GraphNode, GraphPath, NodeType,
+    EdgeType,
+    // GraphKai - Emphasis types
+    EmphasisNode,
+    EmphasisParseResult,
+    EmphasisParser,
+    EmphasisParserConfig,
+    EmphasisStyle,
     // GraphKai - Configuration
-    EmphasisWeights, LinkageConfig, LinkageStrategy, SearchConfig, SearchStrategy,
+    EmphasisWeights,
+    GraphBuildResult,
+    GraphBuilder,
+    GraphEdge,
+    GraphNode,
+    GraphPath,
+    LinkageConfig,
+    LinkageStrategy,
+    Memory,
+    MemoryType,
+    Message,
+    NodeType,
+    Prompt,
+    Provider,
+    Rei,
+    ReiState,
+    ReiTei,
+    ReiWebhook,
+    SearchConfig,
+    SearchStrategy,
+    TagMatchMode,
+    Tei,
+    TextPosition,
+    WebhookDelivery,
+    WebhookEventType,
+    WebhookPayload,
 };
 pub use ports::{
     // Tei Services (体 - execution interfaces)
     ChatMessage,
     CompletionOptions,
     CompletionResponse,
-    EmbeddingService,
-    IntegrationConfig,
-    IntegrationEvent,
     // Repositories
     DeleteBatchResult,
     DocRepository,
     DocumentSaveResult,
+    // GraphKai - Graph repository
+    EdgeBatchResult,
+    EmbeddingService,
+    GraphRepository,
+    GraphStats,
+    IntegrationConfig,
+    IntegrationEvent,
     MemoryRepository,
     MemorySearchFilter,
     MessageRole,
+    NodeBatchResult,
     ReiRepository,
     ReiWebhookRepository,
     SaveStatus,
@@ -64,9 +98,8 @@ pub use ports::{
     TeiRepository,
     TeiWebhook,
     TokenUsage,
+    TraversalQuery,
     WebSearchResult,
     WebSearchService,
     WebhookDeliveryConfig,
-    // GraphKai - Graph repository
-    EdgeBatchResult, GraphRepository, GraphStats, NodeBatchResult, TraversalQuery,
 };

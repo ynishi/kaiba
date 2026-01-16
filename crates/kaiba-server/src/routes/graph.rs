@@ -3,7 +3,7 @@
 //! Provides endpoints for graph construction, traversal, and operations.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, State},
     routing::{get, post, put},
     Json, Router,
 };
@@ -55,27 +55,26 @@ pub async fn rebuild_graph(
     ))?;
 
     // Get documents to process
-    let documents = match &payload.doc_ids {
-        Some(ids) => {
-            let mut docs = Vec::new();
-            for id in ids {
-                if let Some(doc) = doc_store
-                    .find_by_id(*id)
-                    .await
-                    .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-                {
-                    if doc.rei_id == rei_id {
-                        docs.push(doc);
+    let documents =
+        match &payload.doc_ids {
+            Some(ids) => {
+                let mut docs = Vec::new();
+                for id in ids {
+                    if let Some(doc) = doc_store.find_by_id(*id).await.map_err(|e| {
+                        (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                    })? {
+                        if doc.rei_id == rei_id {
+                            docs.push(doc);
+                        }
                     }
                 }
+                docs
             }
-            docs
-        }
-        None => doc_store
-            .find_by_rei(rei_id)
-            .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
-    };
+            None => doc_store
+                .find_by_rei(rei_id)
+                .await
+                .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+        };
 
     // Clear existing graph if requested
     if payload.clear_existing {
@@ -141,7 +140,10 @@ pub async fn rebuild_graph(
 
         // Upsert co-occurrence edges
         if !build_result.co_occurrence_edges.is_empty() {
-            match graph_kai.upsert_edges(&build_result.co_occurrence_edges).await {
+            match graph_kai
+                .upsert_edges(&build_result.co_occurrence_edges)
+                .await
+            {
                 Ok(result) => {
                     total_edges_created += result.created;
                 }
@@ -359,7 +361,9 @@ pub async fn incremental_rebuild(
     ))?;
 
     // Default to last hour if not specified
-    let since = payload.since.unwrap_or_else(|| Utc::now() - Duration::hours(1));
+    let since = payload
+        .since
+        .unwrap_or_else(|| Utc::now() - Duration::hours(1));
 
     // Find modified documents
     let documents = doc_store
@@ -531,7 +535,10 @@ pub fn router() -> Router<AppState> {
         )
         // Phase 5: Operations
         .route("/kaiba/rei/:rei_id/graph/config", get(get_linkage_config))
-        .route("/kaiba/rei/:rei_id/graph/config", put(update_linkage_config))
+        .route(
+            "/kaiba/rei/:rei_id/graph/config",
+            put(update_linkage_config),
+        )
         .route(
             "/kaiba/rei/:rei_id/graph/incremental",
             post(incremental_rebuild),

@@ -121,22 +121,12 @@ impl HybridSearchService {
             other => other,
         };
 
-        tracing::info!(
-            "HybridSearch: query='{}', strategy={:?}",
-            query,
-            strategy
-        );
+        tracing::info!("HybridSearch: query='{}', strategy={:?}", query, strategy);
 
         match strategy {
-            HybridStrategy::GraphFirst => {
-                self.search_graph_first(rei_id, query, &config).await
-            }
-            HybridStrategy::RagFirst => {
-                self.search_rag_first(rei_id, query, &config).await
-            }
-            HybridStrategy::Parallel => {
-                self.search_parallel(rei_id, query, &config).await
-            }
+            HybridStrategy::GraphFirst => self.search_graph_first(rei_id, query, &config).await,
+            HybridStrategy::RagFirst => self.search_rag_first(rei_id, query, &config).await,
+            HybridStrategy::Parallel => self.search_parallel(rei_id, query, &config).await,
             HybridStrategy::Auto => {
                 // Should not reach here, but fallback to parallel
                 self.search_parallel(rei_id, query, &config).await
@@ -161,7 +151,10 @@ impl HybridSearchService {
             .find_nodes_by_text(*rei_id, query, None, config.rag_limit)
             .await?;
 
-        tracing::info!("GraphFirst: Found {} nodes from text search", graph_nodes.len());
+        tracing::info!(
+            "GraphFirst: Found {} nodes from text search",
+            graph_nodes.len()
+        );
 
         // 2. Expand neighbors for found nodes
         let mut all_nodes: Vec<GraphNode> = graph_nodes.clone();
@@ -183,7 +176,10 @@ impl HybridSearchService {
         // 4. Supplement with RAG if we need more results
         let remaining = config.rag_limit.saturating_sub(memories_map.len());
         if remaining > 0 {
-            let query_vector = self.embedding.embed(query).await
+            let query_vector = self
+                .embedding
+                .embed(query)
+                .await
                 .map_err(|e| HybridSearchError::Embedding(e.to_string()))?;
             let rei_id_str = rei_id.to_string();
             let rag_results = self
@@ -220,7 +216,10 @@ impl HybridSearchService {
         let mut memories_map: HashMap<String, ScoredMemory> = HashMap::new();
 
         // 1. Search RAG first with scores
-        let query_vector = self.embedding.embed(query).await
+        let query_vector = self
+            .embedding
+            .embed(query)
+            .await
             .map_err(|e| HybridSearchError::Embedding(e.to_string()))?;
         let rei_id_str = rei_id.to_string();
         let rag_results = self
@@ -290,7 +289,10 @@ impl HybridSearchService {
         let mut memories_map: HashMap<String, ScoredMemory> = HashMap::new();
 
         // Generate embedding once
-        let query_vector = self.embedding.embed(query).await
+        let query_vector = self
+            .embedding
+            .embed(query)
+            .await
             .map_err(|e| HybridSearchError::Embedding(e.to_string()))?;
 
         // Prepare rei_id string for RAG search
@@ -298,8 +300,11 @@ impl HybridSearchService {
 
         // Execute both searches in parallel
         let (rag_result, graph_result) = tokio::join!(
-            self.memory_kai
-                .search_memories_with_scores(&rei_id_str, query_vector, config.rag_limit),
+            self.memory_kai.search_memories_with_scores(
+                &rei_id_str,
+                query_vector,
+                config.rag_limit
+            ),
             self.graph_kai
                 .find_nodes_by_text(*rei_id, query, None, config.rag_limit)
         );
@@ -342,7 +347,10 @@ impl HybridSearchService {
                 content: node.text.clone(),
                 memory_type: crate::models::MemoryType::Fact,
                 importance: node.weight,
-                tags: vec![format!("node_type:{}", node.node_type), "source:graph".to_string()],
+                tags: vec![
+                    format!("node_type:{}", node.node_type),
+                    "source:graph".to_string(),
+                ],
                 created_at: chrono::Utc::now(),
                 metadata: Some(node.metadata.clone()),
             },
@@ -368,8 +376,19 @@ pub fn classify_query(query: &str) -> HybridStrategy {
 
     // Check for keywords FIRST (before length checks) to handle Japanese properly
     // 1. Questions about relationships → GraphFirst
-    let relationship_keywords = ["関係", "つながり", "関連", "relate", "connect", "between", "link"];
-    if relationship_keywords.iter().any(|k| query_lower.contains(k)) {
+    let relationship_keywords = [
+        "関係",
+        "つながり",
+        "関連",
+        "relate",
+        "connect",
+        "between",
+        "link",
+    ];
+    if relationship_keywords
+        .iter()
+        .any(|k| query_lower.contains(k))
+    {
         return HybridStrategy::GraphFirst;
     }
 
@@ -379,7 +398,15 @@ pub fn classify_query(query: &str) -> HybridStrategy {
     }
 
     // 3. Broad/exploratory queries → RagFirst
-    let exploratory_keywords = ["について", "説明", "教えて", "explain", "tell me", "describe", "overview"];
+    let exploratory_keywords = [
+        "について",
+        "説明",
+        "教えて",
+        "explain",
+        "tell me",
+        "describe",
+        "overview",
+    ];
     if exploratory_keywords.iter().any(|k| query_lower.contains(k)) {
         return HybridStrategy::RagFirst;
     }
@@ -410,10 +437,7 @@ mod tests {
 
     #[test]
     fn test_classify_query_short() {
-        assert_eq!(
-            classify_query("GraphRAG"),
-            HybridStrategy::GraphFirst
-        );
+        assert_eq!(classify_query("GraphRAG"), HybridStrategy::GraphFirst);
     }
 
     #[test]
@@ -443,10 +467,7 @@ mod tests {
     #[test]
     fn test_classify_query_long() {
         let long_query = "I want to understand how the entire system works together including all the components and their interactions";
-        assert_eq!(
-            classify_query(long_query),
-            HybridStrategy::RagFirst
-        );
+        assert_eq!(classify_query(long_query), HybridStrategy::RagFirst);
     }
 
     #[test]

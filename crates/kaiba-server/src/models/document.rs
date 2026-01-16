@@ -45,6 +45,7 @@ pub struct DeleteDocumentsRequest {
 /// Status of a document save operation
 #[derive(Debug, Clone, Copy, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum DocumentStatus {
     /// Document was newly created
     Created,
@@ -70,6 +71,7 @@ pub struct EmphasisStats {
 }
 
 impl EmphasisStats {
+    #[allow(dead_code)]
     pub fn total(&self) -> usize {
         self.bold + self.italic + self.bold_italic + self.code
     }

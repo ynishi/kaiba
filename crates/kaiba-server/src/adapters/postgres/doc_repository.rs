@@ -5,7 +5,9 @@ use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use kaiba::{DeleteBatchResult, DocRepository, Document, DocumentSaveResult, DomainError, SaveStatus};
+use kaiba::{
+    DeleteBatchResult, DocRepository, Document, DocumentSaveResult, DomainError, SaveStatus,
+};
 
 /// PostgreSQL implementation of DocRepository
 pub struct PgDocRepository {
@@ -140,7 +142,10 @@ impl DocRepository for PgDocRepository {
             return Ok(vec![]);
         }
 
-        let mut tx = self.pool.begin().await
+        let mut tx = self
+            .pool
+            .begin()
+            .await
             .map_err(|e| DomainError::Repository(e.to_string()))?;
 
         let mut results = Vec::with_capacity(docs.len());
@@ -225,7 +230,8 @@ impl DocRepository for PgDocRepository {
             });
         }
 
-        tx.commit().await
+        tx.commit()
+            .await
             .map_err(|e| DomainError::Repository(e.to_string()))?;
 
         Ok(results)
@@ -249,7 +255,10 @@ impl DocRepository for PgDocRepository {
             });
         }
 
-        let mut tx = self.pool.begin().await
+        let mut tx = self
+            .pool
+            .begin()
+            .await
             .map_err(|e| DomainError::Repository(e.to_string()))?;
 
         let mut deleted = 0;
@@ -269,19 +278,19 @@ impl DocRepository for PgDocRepository {
             }
         }
 
-        tx.commit().await
+        tx.commit()
+            .await
             .map_err(|e| DomainError::Repository(e.to_string()))?;
 
         Ok(DeleteBatchResult { deleted, not_found })
     }
 
     async fn count_by_rei(&self, rei_id: Uuid) -> Result<usize, DomainError> {
-        let count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM documents WHERE rei_id = $1")
-                .bind(rei_id)
-                .fetch_one(&self.pool)
-                .await
-                .map_err(|e| DomainError::Repository(e.to_string()))?;
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM documents WHERE rei_id = $1")
+            .bind(rei_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|e| DomainError::Repository(e.to_string()))?;
 
         Ok(count as usize)
     }

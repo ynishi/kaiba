@@ -76,12 +76,7 @@ impl GraphBuilder {
             let weight = self.config.weight_for_style(&emphasis.style);
 
             if self.config.should_create_node(weight) {
-                let node = GraphNode::concept(
-                    rei_id,
-                    emphasis.text.clone(),
-                    weight,
-                    Some(doc_id),
-                );
+                let node = GraphNode::concept(rei_id, emphasis.text.clone(), weight, Some(doc_id));
 
                 // Create extraction edge (node -> document)
                 let extraction_edge = GraphEdge::extracted_from(node.id, doc_id);
@@ -112,10 +107,8 @@ impl GraphBuilder {
         let mut edges = Vec::new();
 
         // Build a map of node text to node for lookup
-        let node_map: std::collections::HashMap<&str, &GraphNode> = nodes
-            .iter()
-            .map(|n| (n.text.as_str(), n))
-            .collect();
+        let node_map: std::collections::HashMap<&str, &GraphNode> =
+            nodes.iter().map(|n| (n.text.as_str(), n)).collect();
 
         // Group emphasis nodes by proximity (same context window = co-occurrence)
         // We use line number as a simple proxy for context
@@ -126,10 +119,7 @@ impl GraphBuilder {
             let line = emphasis.position.line;
             // Group nodes within 5 lines of each other
             let group_key = line / 5;
-            line_groups
-                .entry(group_key)
-                .or_default()
-                .push(emphasis);
+            line_groups.entry(group_key).or_default().push(emphasis);
         }
 
         // Create co-occurrence edges for nodes in the same group
@@ -147,10 +137,8 @@ impl GraphBuilder {
                     if let (Some(a), Some(b)) = (node_a, node_b) {
                         // Avoid self-loops and duplicate edges
                         if a.id != b.id {
-                            let strength = self.calculate_co_occurrence_strength(
-                                group_nodes[i],
-                                group_nodes[j],
-                            );
+                            let strength = self
+                                .calculate_co_occurrence_strength(group_nodes[i], group_nodes[j]);
                             let edge = GraphEdge::co_occurs_with(a.id, b.id, strength);
                             edges.push(edge);
                         }
@@ -166,11 +154,7 @@ impl GraphBuilder {
     }
 
     /// Calculate co-occurrence strength based on emphasis weights and proximity
-    fn calculate_co_occurrence_strength(
-        &self,
-        a: &EmphasisNode,
-        b: &EmphasisNode,
-    ) -> f32 {
+    fn calculate_co_occurrence_strength(&self, a: &EmphasisNode, b: &EmphasisNode) -> f32 {
         let weight_a = self.config.weight_for_style(&a.style);
         let weight_b = self.config.weight_for_style(&b.style);
 
@@ -281,7 +265,7 @@ mod tests {
         let doc_id = Uuid::new_v4();
 
         let emphasis_nodes = vec![
-            create_emphasis_node(doc_id, "bold text", EmphasisStyle::Bold, 1),     // 1.0 - included
+            create_emphasis_node(doc_id, "bold text", EmphasisStyle::Bold, 1), // 1.0 - included
             create_emphasis_node(doc_id, "italic text", EmphasisStyle::Italic, 2), // 0.7 - excluded
         ];
 
@@ -329,7 +313,9 @@ mod tests {
 
         // Create many nodes in same proximity
         let emphasis_nodes: Vec<EmphasisNode> = (0..10)
-            .map(|i| create_emphasis_node(doc_id, &format!("concept {}", i), EmphasisStyle::Bold, 1))
+            .map(|i| {
+                create_emphasis_node(doc_id, &format!("concept {}", i), EmphasisStyle::Bold, 1)
+            })
             .collect();
 
         let result = builder.build_from_emphasis(rei_id, doc_id, "Test", &emphasis_nodes);

@@ -208,8 +208,8 @@ impl MemoryKai {
     ) -> Result<Vec<(Memory, f32)>, Box<dyn std::error::Error + Send + Sync>> {
         let collection_name = format!("{}_memories", persona_id);
 
-        let search_builder =
-            SearchPointsBuilder::new(&collection_name, query_vector, limit as u64).with_payload(true);
+        let search_builder = SearchPointsBuilder::new(&collection_name, query_vector, limit as u64)
+            .with_payload(true);
 
         let search_result = self.client.search_points(search_builder).await?;
 
