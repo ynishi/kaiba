@@ -129,6 +129,7 @@ pub async fn generate_prompt(
 Role: {{ role }}
 Mood: {{ mood }}
 Energy: {{ energy_level }}%"#)]
+#[allow(dead_code)]
 struct ReiIdentityDto {
     name: String,
     role: String,
@@ -137,6 +138,7 @@ struct ReiIdentityDto {
 }
 
 impl ReiIdentityDto {
+    #[allow(dead_code)]
     fn from_rei(rei: &Rei, state: &ReiState) -> Self {
         Self {
             name: rei.name.clone(),
@@ -182,7 +184,9 @@ impl ReiManifestDto {
 
 /// Single memory entry
 #[derive(Serialize, ToPrompt)]
-#[prompt(template = "[{{ memory_type }}] {{ content }} (created: {{ created_at }}, importance: {{ importance }})")]
+#[prompt(
+    template = "[{{ memory_type }}] {{ content }} (created: {{ created_at }}, importance: {{ importance }})"
+)]
 struct MemoryDto {
     memory_type: String,
     content: String,
@@ -203,7 +207,8 @@ impl From<&Memory> for MemoryDto {
 
 /// Casting format prompt (system_prompt.txt compatible)
 #[derive(Serialize, ToPrompt)]
-#[prompt(template = r#"YOU ARE a Persona named "{{ rei_name }}" who embodies the role of {{ rei_role }}.
+#[prompt(
+    template = r#"YOU ARE a Persona named "{{ rei_name }}" who embodies the role of {{ rei_role }}.
 
 Your role is to:
 - Embody this persona as a helpful, knowledgeable character
@@ -248,7 +253,8 @@ kaiba memory add -t <type> "<content>"
 ```
 Types: learning, fact, expertise, reflection
 
-Use search to recall past conversations, projects, or learnings that aren't in the initial context."#)]
+Use search to recall past conversations, projects, or learnings that aren't in the initial context."#
+)]
 struct CastingPromptDto {
     rei_name: String,
     rei_role: String,
@@ -349,7 +355,10 @@ pub(crate) struct CallPromptDto {
 impl CallPromptDto {
     pub(crate) fn new(rei: &Rei, memories: &[Memory]) -> Self {
         let manifest = ReiManifestDto::from_rei(rei);
-        let memory_strs: Vec<String> = memories.iter().map(|m| MemoryDto::from(m).to_prompt()).collect();
+        let memory_strs: Vec<String> = memories
+            .iter()
+            .map(|m| MemoryDto::from(m).to_prompt())
+            .collect();
         let has_memories = !memories.is_empty();
 
         Self {
@@ -378,7 +387,10 @@ fn format_name(format: PromptFormat) -> &'static str {
 /// Generate prompt in the requested format using ToPrompt DTOs
 fn format_prompt(rei: &Rei, state: &ReiState, memories: &[Memory], format: PromptFormat) -> String {
     let manifest = ReiManifestDto::from_rei(rei);
-    let memory_strs: Vec<String> = memories.iter().map(|m| MemoryDto::from(m).to_prompt()).collect();
+    let memory_strs: Vec<String> = memories
+        .iter()
+        .map(|m| MemoryDto::from(m).to_prompt())
+        .collect();
     let has_memories = !memories.is_empty();
 
     match format {
@@ -726,7 +738,10 @@ mod tests {
         let memories = vec![sample_memory()];
 
         let manifest = ReiManifestDto::from_rei(&rei);
-        let memory_strs: Vec<String> = memories.iter().map(|m| MemoryDto::from(m).to_prompt()).collect();
+        let memory_strs: Vec<String> = memories
+            .iter()
+            .map(|m| MemoryDto::from(m).to_prompt())
+            .collect();
 
         let dto = CastingPromptDto {
             rei_name: rei.name.clone(),
@@ -773,7 +788,10 @@ mod tests {
         let memories = vec![sample_memory()];
 
         let manifest = ReiManifestDto::from_rei(&rei);
-        let memory_strs: Vec<String> = memories.iter().map(|m| MemoryDto::from(m).to_prompt()).collect();
+        let memory_strs: Vec<String> = memories
+            .iter()
+            .map(|m| MemoryDto::from(m).to_prompt())
+            .collect();
 
         let dto = ClaudeCodePromptDto {
             rei_name: rei.name.clone(),
@@ -814,7 +832,10 @@ mod tests {
         let memories = vec![sample_memory()];
 
         let manifest_json = serde_json::to_string_pretty(&rei.manifest).unwrap();
-        let memory_strs: Vec<String> = memories.iter().map(|m| MemoryDto::from(m).to_prompt()).collect();
+        let memory_strs: Vec<String> = memories
+            .iter()
+            .map(|m| MemoryDto::from(m).to_prompt())
+            .collect();
 
         let dto = RawPromptDto {
             rei_name: rei.name.clone(),

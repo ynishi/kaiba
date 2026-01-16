@@ -13,12 +13,16 @@ mod models;
 mod routes;
 mod services;
 
-use adapters::{HttpWebhook, PgReiRepository, PgReiWebhookRepository, PgTeiRepository};
+use adapters::{
+    HttpWebhook, Neo4jGraphRepository, PgDocRepository, PgReiRepository, PgReiWebhookRepository,
+    PgTeiRepository,
+};
 use application::{ReiService, TeiService};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
 use services::scheduler;
 use services::web_search::WebSearchAgent;
+use services::HybridSearchService;
 
 /// Type aliases for application services with concrete repository implementations
 pub type AppReiService = ReiService<PgReiRepository>;
@@ -30,7 +34,10 @@ pub struct AppState {
     pub pool: PgPool,
     pub rei_service: Arc<AppReiService>,
     pub tei_service: Arc<AppTeiService>,
+    pub doc_store: Option<Arc<PgDocRepository>>,
     pub memory_kai: Option<Arc<MemoryKai>>,
+    pub graph_kai: Option<Arc<Neo4jGraphRepository>>,
+    pub hybrid_search: Option<Arc<HybridSearchService>>,
     pub embedding: Option<EmbeddingService>,
     pub web_search: Option<WebSearchAgent>,
     pub webhook_repo: Arc<PgReiWebhookRepository>,
@@ -120,22 +127,67 @@ async fn main(
         tracing::warn!("⚠️  No GEMINI_API_KEY set - WebSearch disabled");
     }
 
+    // Initialize GraphKai (Neo4j) if configured
+    let graph_kai = match (
+        secrets.get("NEO4J_URI"),
+        secrets.get("NEO4J_USER"),
+        secrets.get("NEO4J_PASSWORD"),
+    ) {
+        (Some(uri), Some(user), Some(password)) => {
+            match Neo4jGraphRepository::new(&uri, &user, &password).await {
+                Ok(repo) => {
+                    tracing::info!("🕸️  GraphKai (知識網) connected to Neo4j");
+                    Some(Arc::new(repo))
+                }
+                Err(e) => {
+                    tracing::warn!("⚠️  Failed to connect to GraphKai: {}", e);
+                    None
+                }
+            }
+        }
+        _ => {
+            tracing::warn!("⚠️  No NEO4J_* credentials set - GraphKai disabled");
+            None
+        }
+    };
+
     // Initialize application services
     let rei_repo = Arc::new(PgReiRepository::new(pool.clone()));
     let tei_repo = Arc::new(PgTeiRepository::new(pool.clone()));
     let webhook_repo = Arc::new(PgReiWebhookRepository::new(pool.clone()));
+    let doc_store = Arc::new(PgDocRepository::new(pool.clone()));
     let rei_service = Arc::new(ReiService::new(rei_repo));
     let tei_service = Arc::new(TeiService::new(tei_repo));
     let http_webhook = Arc::new(HttpWebhook::new());
 
+    tracing::info!("📄 DocStore (GraphKai Source of Truth) initialized");
     tracing::info!("🔔 Webhook service initialized");
+
+    // Initialize HybridSearchService if all required services are available
+    let hybrid_search = match (&memory_kai, &graph_kai, &embedding) {
+        (Some(mem), Some(graph), Some(emb)) => {
+            tracing::info!("🔀 HybridSearchService initialized (RAG + Graph)");
+            Some(Arc::new(HybridSearchService::new(
+                mem.clone(),
+                graph.clone(),
+                emb.clone(),
+            )))
+        }
+        _ => {
+            tracing::warn!("⚠️  HybridSearchService disabled (missing required services)");
+            None
+        }
+    };
 
     // Create application state
     let state = AppState {
         pool: pool.clone(),
         rei_service,
         tei_service,
+        doc_store: Some(doc_store),
         memory_kai: memory_kai.clone(),
+        graph_kai,
+        hybrid_search,
         embedding: embedding.clone(),
         web_search: web_search.clone(),
         webhook_repo,
@@ -169,6 +221,8 @@ async fn main(
         .merge(routes::tei::router())
         .merge(routes::call::router())
         .merge(routes::memory::router())
+        .merge(routes::document::router())
+        .merge(routes::graph::router())
         .merge(routes::search::router())
         .merge(routes::learning::router())
         .merge(routes::prompt::router())

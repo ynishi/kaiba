@@ -235,17 +235,68 @@ pub async fn get_call_history(
 }
 
 // ============================================
-// RAG Helper Functions
+// Hybrid RAG + Graph Helper Functions
 // ============================================
 
-/// Search memories for RAG context
+/// Internal hybrid search - spawned to isolate type chains from axum version conflicts
+fn spawn_hybrid_search(
+    hybrid: std::sync::Arc<crate::services::HybridSearchService>,
+    rei_id: Uuid,
+    query: String,
+) -> tokio::task::JoinHandle<Option<(Vec<Memory>, Vec<MemoryReference>)>> {
+    tokio::spawn(async move {
+        match hybrid.search(&rei_id, &query, Default::default()).await {
+            Ok(result) => {
+                // Extract memories and their actual scores
+                let memories: Vec<Memory> =
+                    result.memories.iter().map(|sm| sm.memory.clone()).collect();
+
+                let refs: Vec<MemoryReference> = result
+                    .memories
+                    .iter()
+                    .map(|sm| MemoryReference {
+                        id: sm.memory.id.clone(),
+                        similarity: sm.score, // Use actual score from search
+                    })
+                    .collect();
+
+                tracing::info!(
+                    "HybridSearch: Retrieved {} memories (RAG: {}, Graph: {})",
+                    result.memories.len(),
+                    result.rag_sources.len(),
+                    result.graph_sources.len()
+                );
+
+                Some((memories, refs))
+            }
+            Err(e) => {
+                tracing::warn!("HybridSearch failed, falling back to RAG-only: {}", e);
+                None
+            }
+        }
+    })
+}
+
+/// Search memories for RAG context with optional Hybrid Search (RAG + Graph)
 async fn search_memories_for_rag(
     state: &AppState,
     rei_id: &Uuid,
     query: &str,
     limit: Option<usize>,
 ) -> Result<(Vec<Memory>, Vec<MemoryReference>), (axum::http::StatusCode, String)> {
-    // Check if services are available
+    let limit = limit.unwrap_or(5);
+
+    // Try HybridSearchService first (combines RAG + Graph)
+    // Use spawned task to isolate type chains from axum version conflicts
+    if let Some(hybrid) = &state.hybrid_search {
+        let handle = spawn_hybrid_search(hybrid.clone(), *rei_id, query.to_string());
+        if let Ok(Some(result)) = handle.await {
+            return Ok(result);
+        }
+        // Fall through to RAG-only search
+    }
+
+    // Fallback to RAG-only search
     let memory_kai = match &state.memory_kai {
         Some(kai) => kai,
         None => return Ok((vec![], vec![])),
@@ -262,26 +313,32 @@ async fn search_memories_for_rag(
         (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
     })?;
 
-    // Search memories
-    let limit = limit.unwrap_or(5);
-    let memories = memory_kai
-        .search_memories(&rei_id.to_string(), query_vector, limit)
+    // Search memories with scores
+    let memories_with_scores = memory_kai
+        .search_memories_with_scores(&rei_id.to_string(), query_vector, limit)
         .await
         .map_err(|e| {
             tracing::warn!("Failed to search memories for RAG: {}", e);
             (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
 
-    // Build memory references (similarity scores would come from Qdrant)
-    let refs: Vec<MemoryReference> = memories
+    // Separate memories and build references with actual scores
+    let memories: Vec<Memory> = memories_with_scores
         .iter()
-        .map(|m| MemoryReference {
+        .map(|(m, _)| m.clone())
+        .collect();
+    let refs: Vec<MemoryReference> = memories_with_scores
+        .iter()
+        .map(|(m, score)| MemoryReference {
             id: m.id.clone(),
-            similarity: 0.0, // TODO: Get actual similarity from Qdrant
+            similarity: *score,
         })
         .collect();
 
-    tracing::info!("RAG: Retrieved {} memories for context", memories.len());
+    tracing::info!(
+        "RAG-only: Retrieved {} memories for context",
+        memories.len()
+    );
 
     Ok((memories, refs))
 }
