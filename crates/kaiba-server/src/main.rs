@@ -200,6 +200,16 @@ async fn main(
         .and_then(|s| s.parse().ok());
     let gemini_api_key = secrets.get("GEMINI_API_KEY");
 
+    // Convert concrete types to trait objects for scheduler
+    let doc_store_dyn: Option<Arc<dyn kaiba::DocRepository>> = state
+        .doc_store
+        .clone()
+        .map(|ds| ds as Arc<dyn kaiba::DocRepository>);
+    let graph_kai_dyn: Option<Arc<dyn kaiba::GraphRepository>> = state
+        .graph_kai
+        .clone()
+        .map(|gk| gk as Arc<dyn kaiba::GraphRepository>);
+
     if let Some(_handle) = scheduler::maybe_start_scheduler(
         pool,
         memory_kai,
@@ -209,8 +219,10 @@ async fn main(
         scheduler_interval,
         Some(state.webhook_repo.clone()),
         Some(state.http_webhook.clone()),
+        doc_store_dyn,
+        graph_kai_dyn,
     ) {
-        tracing::info!("📅 Autonomous scheduler started");
+        tracing::info!("📅 Autonomous scheduler started (with GraphKai integration)");
     } else {
         tracing::warn!("⚠️  Autonomous scheduler disabled (missing services)");
     }

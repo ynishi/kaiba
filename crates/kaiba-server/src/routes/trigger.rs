@@ -197,12 +197,20 @@ pub async fn trigger_jobs(
             }
             Action::Digest => {
                 // Execute digest
-                let service = DigestService::new(
+                let mut service = DigestService::new(
                     state.pool.clone(),
                     memory_kai.clone(),
                     embedding.clone(),
                     None, // Gemini API key from secrets if needed
                 );
+
+                // Add DocStore and GraphKai for document -> graph integration
+                if let Some(doc_store) = &state.doc_store {
+                    service = service.with_doc_store(doc_store.clone());
+                }
+                if let Some(graph_kai) = &state.graph_kai {
+                    service = service.with_graph_kai(graph_kai.clone());
+                }
 
                 match service.digest(rei.id).await {
                     Ok(result) => {
@@ -211,8 +219,10 @@ pub async fn trigger_jobs(
                             action: "Digest".to_string(),
                             success: true,
                             details: Some(format!(
-                                "{} memories processed",
-                                result.memories_processed
+                                "{} memories processed, doc={:?}, graph_nodes={}",
+                                result.memories_processed,
+                                result.document_id,
+                                result.graph_nodes_created
                             )),
                         });
                         summary.digests_executed += 1;

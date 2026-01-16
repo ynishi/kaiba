@@ -14,7 +14,10 @@ use crate::services::embedding::EmbeddingService;
 use crate::services::qdrant::MemoryKai;
 use crate::services::self_learning::{LearningSession, SelfLearningService};
 use crate::services::web_search::WebSearchAgent;
-use kaiba::{ReiWebhookRepository, TeiWebhook, WebhookEventType, WebhookPayload};
+use kaiba::{
+    DocRepository, GraphRepository, ReiWebhookRepository, TeiWebhook, WebhookEventType,
+    WebhookPayload,
+};
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,6 +53,9 @@ pub struct AutonomousScheduler {
     // Webhook support
     webhook_repo: Option<Arc<PgReiWebhookRepository>>,
     http_webhook: Option<Arc<HttpWebhook>>,
+    // GraphKai integration (for digest -> document -> graph flow)
+    doc_store: Option<Arc<dyn DocRepository>>,
+    graph_kai: Option<Arc<dyn GraphRepository>>,
 }
 
 impl AutonomousScheduler {
@@ -64,6 +70,8 @@ impl AutonomousScheduler {
         config: Option<SchedulerConfig>,
         webhook_repo: Option<Arc<PgReiWebhookRepository>>,
         http_webhook: Option<Arc<HttpWebhook>>,
+        doc_store: Option<Arc<dyn DocRepository>>,
+        graph_kai: Option<Arc<dyn GraphRepository>>,
     ) -> Self {
         Self {
             pool,
@@ -74,6 +82,8 @@ impl AutonomousScheduler {
             config: config.unwrap_or_default(),
             webhook_repo,
             http_webhook,
+            doc_store,
+            graph_kai,
         }
     }
 
@@ -330,18 +340,28 @@ impl AutonomousScheduler {
         &self,
         rei_id: Uuid,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let service = DigestService::new(
+        let mut service = DigestService::new(
             self.pool.clone(),
             self.memory_kai.clone(),
             self.embedding.clone(),
             self.gemini_api_key.clone(),
         );
 
+        // Add DocStore and GraphKai for document -> graph integration
+        if let Some(doc_store) = &self.doc_store {
+            service = service.with_doc_store(doc_store.clone());
+        }
+        if let Some(graph_kai) = &self.graph_kai {
+            service = service.with_graph_kai(graph_kai.clone());
+        }
+
         match service.digest(rei_id).await {
             Ok(result) => {
                 tracing::info!(
-                    "  📝 Digested: {} memories -> expertise",
-                    result.memories_processed
+                    "  📝 Digested: {} memories -> expertise (doc={:?}, graph_nodes={})",
+                    result.memories_processed,
+                    result.document_id,
+                    result.graph_nodes_created
                 );
 
                 // Dispatch webhooks for digest completion (only if expertise was created)
@@ -423,6 +443,8 @@ pub fn maybe_start_scheduler(
     interval_secs: Option<u64>,
     webhook_repo: Option<Arc<PgReiWebhookRepository>>,
     http_webhook: Option<Arc<HttpWebhook>>,
+    doc_store: Option<Arc<dyn DocRepository>>,
+    graph_kai: Option<Arc<dyn GraphRepository>>,
 ) -> Option<tokio::task::JoinHandle<()>> {
     let memory_kai = memory_kai?;
     let embedding = embedding?;
@@ -442,6 +464,8 @@ pub fn maybe_start_scheduler(
         Some(config),
         webhook_repo,
         http_webhook,
+        doc_store,
+        graph_kai,
     );
 
     Some(scheduler.start())
