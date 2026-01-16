@@ -559,6 +559,64 @@ impl GraphRepository for Neo4jGraphRepository {
         }
     }
 
+    async fn get_edges_for_nodes(&self, node_ids: &[Uuid]) -> Result<Vec<GraphEdge>, DomainError> {
+        if node_ids.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let ids_str: Vec<String> = node_ids.iter().map(|id| id.to_string()).collect();
+
+        let cypher = r#"
+            MATCH (from)-[r]->(to)
+            WHERE from.id IN $node_ids OR to.id IN $node_ids
+            RETURN r, from.id as from_id, to.id as to_id, type(r) as rel_type
+        "#;
+
+        let mut result = self
+            .graph
+            .execute(query(cypher).param("node_ids", ids_str))
+            .await
+            .map_err(|e| DomainError::Repository(format!("Neo4j query failed: {}", e)))?;
+
+        let mut edges = Vec::new();
+        while let Some(row) = result.next().await.map_err(|e| {
+            DomainError::Repository(format!("Failed to get result: {}", e))
+        })? {
+            let rel: Relation = row.get("r").map_err(|e| {
+                DomainError::Repository(format!("Failed to get relation: {}", e))
+            })?;
+
+            let id_str: String = rel.get("id").unwrap_or_else(|_| Uuid::new_v4().to_string());
+            let id = Uuid::parse_str(&id_str).unwrap_or_else(|_| Uuid::new_v4());
+
+            let from_id_str: String = row.get("from_id").unwrap_or_default();
+            let from_id = Uuid::parse_str(&from_id_str).unwrap_or_else(|_| Uuid::nil());
+
+            let to_id_str: String = row.get("to_id").unwrap_or_default();
+            let to_id = Uuid::parse_str(&to_id_str).unwrap_or_else(|_| Uuid::nil());
+
+            let rel_type: String = row.get("rel_type").unwrap_or_default();
+            let edge_type = Self::rel_to_edge_type(&rel_type);
+
+            let strength: f64 = rel.get("strength").unwrap_or(1.0);
+
+            let metadata_str: String = rel.get("metadata").unwrap_or_else(|_| "{}".to_string());
+            let metadata: serde_json::Value =
+                serde_json::from_str(&metadata_str).unwrap_or(serde_json::Value::Object(Default::default()));
+
+            edges.push(GraphEdge {
+                id,
+                from_id,
+                to_id,
+                edge_type,
+                strength: strength as f32,
+                metadata,
+            });
+        }
+
+        Ok(edges)
+    }
+
     async fn get_neighbors(&self, node_id: Uuid, depth: u32) -> Result<Vec<GraphNode>, DomainError> {
         let cypher = format!(
             r#"

@@ -151,7 +151,7 @@ impl MemoryKai {
         persona_id: &str,
         query_vector: Vec<f32>,
         limit: usize,
-    ) -> Result<Vec<Memory>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Memory>, Box<dyn std::error::Error + Send + Sync>> {
         self.search_memories_with_filter(persona_id, query_vector, limit, SearchFilter::default())
             .await
     }
@@ -163,7 +163,7 @@ impl MemoryKai {
         query_vector: Vec<f32>,
         limit: usize,
         filter: SearchFilter,
-    ) -> Result<Vec<Memory>, Box<dyn std::error::Error>> {
+    ) -> Result<Vec<Memory>, Box<dyn std::error::Error + Send + Sync>> {
         let collection_name = format!("{}_memories", persona_id);
 
         // Build filter conditions
@@ -197,6 +197,38 @@ impl MemoryKai {
         );
 
         Ok(memories)
+    }
+
+    /// Search memories with similarity scores
+    pub async fn search_memories_with_scores(
+        &self,
+        persona_id: &str,
+        query_vector: Vec<f32>,
+        limit: usize,
+    ) -> Result<Vec<(Memory, f32)>, Box<dyn std::error::Error + Send + Sync>> {
+        let collection_name = format!("{}_memories", persona_id);
+
+        let search_builder =
+            SearchPointsBuilder::new(&collection_name, query_vector, limit as u64).with_payload(true);
+
+        let search_result = self.client.search_points(search_builder).await?;
+
+        let memories_with_scores: Vec<(Memory, f32)> = search_result
+            .result
+            .into_iter()
+            .filter_map(|point| {
+                let payload_json = serde_json::to_value(&point.payload).ok()?;
+                let memory: Memory = serde_json::from_value(payload_json).ok()?;
+                Some((memory, point.score))
+            })
+            .collect();
+
+        tracing::info!(
+            "🔍 Found {} memories with scores in MemoryKai",
+            memories_with_scores.len()
+        );
+
+        Ok(memories_with_scores)
     }
 
     /// Count total memories for a persona

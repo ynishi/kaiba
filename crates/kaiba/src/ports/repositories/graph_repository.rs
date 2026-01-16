@@ -134,6 +134,12 @@ pub trait GraphRepository: Send + Sync {
     /// Delete an edge
     async fn delete_edge(&self, from_id: Uuid, to_id: Uuid) -> Result<bool, DomainError>;
 
+    /// Get all edges for multiple nodes (batch operation to avoid N+1)
+    async fn get_edges_for_nodes(
+        &self,
+        node_ids: &[Uuid],
+    ) -> Result<Vec<GraphEdge>, DomainError>;
+
     // ===================
     // Traversal Operations
     // ===================

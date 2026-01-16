@@ -22,6 +22,7 @@ use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
 use services::scheduler;
 use services::web_search::WebSearchAgent;
+use services::HybridSearchService;
 
 /// Type aliases for application services with concrete repository implementations
 pub type AppReiService = ReiService<PgReiRepository>;
@@ -36,6 +37,7 @@ pub struct AppState {
     pub doc_store: Option<Arc<PgDocRepository>>,
     pub memory_kai: Option<Arc<MemoryKai>>,
     pub graph_kai: Option<Arc<Neo4jGraphRepository>>,
+    pub hybrid_search: Option<Arc<HybridSearchService>>,
     pub embedding: Option<EmbeddingService>,
     pub web_search: Option<WebSearchAgent>,
     pub webhook_repo: Arc<PgReiWebhookRepository>,
@@ -161,6 +163,22 @@ async fn main(
     tracing::info!("📄 DocStore (GraphKai Source of Truth) initialized");
     tracing::info!("🔔 Webhook service initialized");
 
+    // Initialize HybridSearchService if all required services are available
+    let hybrid_search = match (&memory_kai, &graph_kai, &embedding) {
+        (Some(mem), Some(graph), Some(emb)) => {
+            tracing::info!("🔀 HybridSearchService initialized (RAG + Graph)");
+            Some(Arc::new(HybridSearchService::new(
+                mem.clone(),
+                graph.clone(),
+                emb.clone(),
+            )))
+        }
+        _ => {
+            tracing::warn!("⚠️  HybridSearchService disabled (missing required services)");
+            None
+        }
+    };
+
     // Create application state
     let state = AppState {
         pool: pool.clone(),
@@ -169,6 +187,7 @@ async fn main(
         doc_store: Some(doc_store),
         memory_kai: memory_kai.clone(),
         graph_kai,
+        hybrid_search,
         embedding: embedding.clone(),
         web_search: web_search.clone(),
         webhook_repo,

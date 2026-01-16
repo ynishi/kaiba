@@ -74,3 +74,9 @@ hex = "0.4"
 
 # Protobuf types (for Qdrant datetime filter)
 prost-types = "0.13"
+
+[features]
+default = []
+# Enable integration tests requiring Docker (Neo4j, Qdrant)
+# Run with: cargo test --features integration
+integration = []

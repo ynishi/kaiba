@@ -141,3 +141,81 @@ pub struct NodeNeighborsResponse {
     pub neighbors: Vec<GraphNodeSummary>,
     pub edges: Vec<GraphEdgeSummary>,
 }
+
+// ============================================
+// Phase 5: Operations DTOs
+// ============================================
+
+/// Update linkage config request
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateLinkageConfigRequest {
+    /// New linkage configuration
+    pub config: LinkageConfig,
+}
+
+/// Linkage config response (GET)
+#[derive(Debug, Serialize, ToSchema)]
+pub struct LinkageConfigResponse {
+    /// Current linkage configuration
+    pub config: LinkageConfig,
+    /// Last updated timestamp (if stored)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Incremental rebuild request
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct IncrementalRebuildRequest {
+    /// Only process documents modified since this time
+    /// If not provided, processes documents modified in the last hour
+    #[serde(default)]
+    pub since: Option<chrono::DateTime<chrono::Utc>>,
+    /// Optional custom linkage configuration
+    #[serde(default)]
+    pub config: Option<LinkageConfig>,
+}
+
+/// Incremental rebuild response
+#[derive(Debug, Serialize, ToSchema)]
+pub struct IncrementalRebuildResponse {
+    /// Number of modified documents found
+    pub documents_found: usize,
+    /// Number of documents processed
+    pub documents_processed: usize,
+    /// Number of nodes created/updated
+    pub nodes_created: usize,
+    /// Number of edges created
+    pub edges_created: usize,
+    /// Errors encountered
+    pub errors: Vec<String>,
+    /// Time taken in milliseconds
+    pub duration_ms: u64,
+    /// Time range checked (from)
+    pub since: chrono::DateTime<chrono::Utc>,
+    /// Time range checked (to)
+    pub until: chrono::DateTime<chrono::Utc>,
+}
+
+/// Graph export for visualization
+#[derive(Debug, Serialize, ToSchema)]
+pub struct GraphExportResponse {
+    /// All nodes in the graph
+    pub nodes: Vec<GraphNodeSummary>,
+    /// All edges in the graph
+    pub edges: Vec<GraphEdgeSummary>,
+    /// Graph statistics
+    pub stats: GraphStatsResponse,
+    /// Export metadata
+    pub metadata: GraphExportMetadata,
+}
+
+/// Export metadata
+#[derive(Debug, Serialize, ToSchema)]
+pub struct GraphExportMetadata {
+    /// Rei ID this graph belongs to
+    pub rei_id: Uuid,
+    /// Export timestamp
+    pub exported_at: chrono::DateTime<chrono::Utc>,
+    /// Format version
+    pub format_version: String,
+}

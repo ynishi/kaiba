@@ -1,11 +1,12 @@
 //! Integration tests for Neo4jGraphRepository
 //!
-//! These tests require a running Neo4j instance.
+//! These tests require a running Neo4j instance (Docker).
 //! Set NEO4J_TEST_URI, NEO4J_TEST_USER, NEO4J_TEST_PASSWORD environment variables.
 //!
-//! Run with: cargo test --package kaiba-server -- --ignored neo4j
+//! Run with: cargo test -p kaiba-server --features integration
+//! Or use: ./scripts/run-integration-tests.sh
 
-#[cfg(test)]
+#[cfg(all(test, feature = "integration"))]
 mod tests {
     use kaiba::{EdgeType, GraphEdge, GraphNode, GraphRepository, NodeType, TraversalQuery};
     use std::sync::Arc;
@@ -14,30 +15,24 @@ mod tests {
     use crate::adapters::Neo4jGraphRepository;
 
     /// Get test Neo4j connection (requires env vars)
-    async fn get_test_repo() -> Option<Arc<Neo4jGraphRepository>> {
-        let uri = std::env::var("NEO4J_TEST_URI").ok()?;
-        let user = std::env::var("NEO4J_TEST_USER").ok()?;
-        let password = std::env::var("NEO4J_TEST_PASSWORD").ok()?;
+    async fn get_test_repo() -> Arc<Neo4jGraphRepository> {
+        let uri = std::env::var("NEO4J_TEST_URI")
+            .expect("NEO4J_TEST_URI must be set for integration tests");
+        let user = std::env::var("NEO4J_TEST_USER")
+            .expect("NEO4J_TEST_USER must be set for integration tests");
+        let password = std::env::var("NEO4J_TEST_PASSWORD")
+            .expect("NEO4J_TEST_PASSWORD must be set for integration tests");
 
-        match Neo4jGraphRepository::new(&uri, &user, &password).await {
-            Ok(repo) => Some(Arc::new(repo)),
-            Err(e) => {
-                eprintln!("Failed to connect to test Neo4j: {}", e);
-                None
-            }
-        }
+        Arc::new(
+            Neo4jGraphRepository::new(&uri, &user, &password)
+                .await
+                .expect("Failed to connect to test Neo4j"),
+        )
     }
 
     #[tokio::test]
-    #[ignore = "requires Neo4j connection"]
     async fn test_neo4j_node_crud() {
-        let repo = match get_test_repo().await {
-            Some(r) => r,
-            None => {
-                eprintln!("Skipping test: Neo4j not available");
-                return;
-            }
-        };
+        let repo = get_test_repo().await;
 
         let rei_id = Uuid::new_v4();
         let doc_id = Uuid::new_v4();
@@ -80,15 +75,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Neo4j connection"]
     async fn test_neo4j_edge_crud() {
-        let repo = match get_test_repo().await {
-            Some(r) => r,
-            None => {
-                eprintln!("Skipping test: Neo4j not available");
-                return;
-            }
-        };
+        let repo = get_test_repo().await;
 
         let rei_id = Uuid::new_v4();
 
@@ -124,15 +112,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Neo4j connection"]
     async fn test_neo4j_batch_operations() {
-        let repo = match get_test_repo().await {
-            Some(r) => r,
-            None => {
-                eprintln!("Skipping test: Neo4j not available");
-                return;
-            }
-        };
+        let repo = get_test_repo().await;
 
         let rei_id = Uuid::new_v4();
 
@@ -170,15 +151,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Neo4j connection"]
     async fn test_neo4j_find_by_text() {
-        let repo = match get_test_repo().await {
-            Some(r) => r,
-            None => {
-                eprintln!("Skipping test: Neo4j not available");
-                return;
-            }
-        };
+        let repo = get_test_repo().await;
 
         let rei_id = Uuid::new_v4();
 
@@ -210,15 +184,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Neo4j connection"]
     async fn test_neo4j_traverse() {
-        let repo = match get_test_repo().await {
-            Some(r) => r,
-            None => {
-                eprintln!("Skipping test: Neo4j not available");
-                return;
-            }
-        };
+        let repo = get_test_repo().await;
 
         let rei_id = Uuid::new_v4();
 
@@ -253,15 +220,8 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Neo4j connection"]
     async fn test_neo4j_delete_by_document() {
-        let repo = match get_test_repo().await {
-            Some(r) => r,
-            None => {
-                eprintln!("Skipping test: Neo4j not available");
-                return;
-            }
-        };
+        let repo = get_test_repo().await;
 
         let rei_id = Uuid::new_v4();
         let doc_id = Uuid::new_v4();

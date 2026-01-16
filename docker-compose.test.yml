@@ -1,0 +1,39 @@
+# Docker Compose for integration tests
+# Usage: docker compose -f docker-compose.test.yml up -d
+
+services:
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: kaiba-neo4j-test
+    ports:
+      - "7474:7474"   # HTTP
+      - "7687:7687"   # Bolt
+    environment:
+      - NEO4J_AUTH=neo4j/testpassword
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://localhost:7474"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - neo4j_test_data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.7.4
+    container_name: kaiba-qdrant-test
+    ports:
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
+    healthcheck:
+      test: ["CMD", "wget", "-O", "-", "http://localhost:6333/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - qdrant_test_data:/qdrant/storage
+
+volumes:
+  neo4j_test_data:
+  qdrant_test_data:
