@@ -4,6 +4,7 @@
 //! - /kaiba/tei - Tei (体) management
 //! - /kaiba/rei/:id/call - LLM invocation
 //! - /kaiba/rei/:id/memories - Memory storage (MemoryKai/Qdrant)
+//! - /kaiba/rei/:id/documents - Document storage (GraphKai Source of Truth)
 //! - /kaiba/rei/:id/webhooks - Webhook management (外界へのアクション)
 //! - /kaiba/rei/:id/dashboard - Dashboard (状況一覧)
 //! - /kaiba/search - Web search (Gemini)
@@ -11,6 +12,7 @@
 
 pub mod call;
 pub mod dashboard;
+pub mod document;
 pub mod learning;
 pub mod memory;
 pub mod prompt;

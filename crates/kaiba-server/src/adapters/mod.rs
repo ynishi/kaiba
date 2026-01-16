@@ -7,5 +7,5 @@ pub mod postgres;
 pub mod webhook;
 
 // Re-exports
-pub use postgres::{PgReiRepository, PgReiWebhookRepository, PgTeiRepository};
+pub use postgres::{PgDocRepository, PgReiRepository, PgReiWebhookRepository, PgTeiRepository};
 pub use webhook::HttpWebhook;

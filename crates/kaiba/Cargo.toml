@@ -25,5 +25,8 @@ chrono = { workspace = true }
 # Async trait support
 async-trait = "0.1"
 
+# Crypto (checksum)
+sha2 = "0.10"
+
 # Error handling
 thiserror = { workspace = true }

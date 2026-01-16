@@ -13,7 +13,7 @@ mod models;
 mod routes;
 mod services;
 
-use adapters::{HttpWebhook, PgReiRepository, PgReiWebhookRepository, PgTeiRepository};
+use adapters::{HttpWebhook, PgDocRepository, PgReiRepository, PgReiWebhookRepository, PgTeiRepository};
 use application::{ReiService, TeiService};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
@@ -30,6 +30,7 @@ pub struct AppState {
     pub pool: PgPool,
     pub rei_service: Arc<AppReiService>,
     pub tei_service: Arc<AppTeiService>,
+    pub doc_store: Option<Arc<PgDocRepository>>,
     pub memory_kai: Option<Arc<MemoryKai>>,
     pub embedding: Option<EmbeddingService>,
     pub web_search: Option<WebSearchAgent>,
@@ -124,10 +125,12 @@ async fn main(
     let rei_repo = Arc::new(PgReiRepository::new(pool.clone()));
     let tei_repo = Arc::new(PgTeiRepository::new(pool.clone()));
     let webhook_repo = Arc::new(PgReiWebhookRepository::new(pool.clone()));
+    let doc_store = Arc::new(PgDocRepository::new(pool.clone()));
     let rei_service = Arc::new(ReiService::new(rei_repo));
     let tei_service = Arc::new(TeiService::new(tei_repo));
     let http_webhook = Arc::new(HttpWebhook::new());
 
+    tracing::info!("📄 DocStore (GraphKai Source of Truth) initialized");
     tracing::info!("🔔 Webhook service initialized");
 
     // Create application state
@@ -135,6 +138,7 @@ async fn main(
         pool: pool.clone(),
         rei_service,
         tei_service,
+        doc_store: Some(doc_store),
         memory_kai: memory_kai.clone(),
         embedding: embedding.clone(),
         web_search: web_search.clone(),
@@ -169,6 +173,7 @@ async fn main(
         .merge(routes::tei::router())
         .merge(routes::call::router())
         .merge(routes::memory::router())
+        .merge(routes::document::router())
         .merge(routes::search::router())
         .merge(routes::learning::router())
         .merge(routes::prompt::router())
