@@ -3,7 +3,7 @@
 //! Combines MemoryKai (Qdrant vector search) with GraphKai (Neo4j graph traversal)
 //! to provide dense knowledge retrieval.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -38,17 +38,72 @@ pub enum HybridSearchError {
 }
 
 /// Search strategy for hybrid queries
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum HybridStrategy {
+    // === 複合戦略 ===
     /// Graph traversal first, then RAG supplement
     GraphFirst,
     /// RAG search first, then graph expansion
     RagFirst,
-    /// Execute both in parallel and merge
+    /// Execute all (RAG + DB + Graph) in parallel and merge
     Parallel,
+    /// Multi-hop iterative: RAG → Graph → RAG (configurable depth)
+    MultiHop,
     /// Automatically determine based on query
     #[default]
     Auto,
+
+    // === 単体戦略 ===
+    /// RAG (Qdrant) only
+    SingleRag,
+    /// DB full-text (PostgreSQL) only
+    SingleDb,
+    /// Graph (Neo4j) only
+    SingleGraph,
+}
+
+/// Strategy set for combining multiple strategies (run in parallel)
+#[derive(Debug, Clone, Default)]
+pub struct StrategySet {
+    pub strategies: HashSet<HybridStrategy>,
+    /// Hop depth for MultiHop strategy (default: 2)
+    pub hop_depth: u32,
+}
+
+impl StrategySet {
+    /// Create a set with a single strategy
+    pub fn single(strategy: HybridStrategy) -> Self {
+        let mut strategies = HashSet::new();
+        strategies.insert(strategy);
+        Self {
+            strategies,
+            hop_depth: 2,
+        }
+    }
+
+    /// Create a set with multiple strategies
+    pub fn multiple(strategies: impl IntoIterator<Item = HybridStrategy>) -> Self {
+        Self {
+            strategies: strategies.into_iter().collect(),
+            hop_depth: 2,
+        }
+    }
+
+    /// Set hop depth for MultiHop
+    pub fn with_hop_depth(mut self, depth: u32) -> Self {
+        self.hop_depth = depth;
+        self
+    }
+
+    /// Check if a strategy is in the set
+    pub fn contains(&self, strategy: HybridStrategy) -> bool {
+        self.strategies.contains(&strategy)
+    }
+
+    /// Check if set is empty (defaults to Auto)
+    pub fn is_empty(&self) -> bool {
+        self.strategies.is_empty()
+    }
 }
 
 /// Memory with similarity score
@@ -154,13 +209,19 @@ impl HybridSearchService {
         );
 
         let result = match strategy {
+            // 複合戦略
             HybridStrategy::GraphFirst => self.search_graph_first(rei_id, query, &config).await,
             HybridStrategy::RagFirst => self.search_rag_first(rei_id, query, &config).await,
             HybridStrategy::Parallel => self.search_parallel(rei_id, query, &config).await,
+            HybridStrategy::MultiHop => self.search_multi_hop(rei_id, query, &config).await,
             HybridStrategy::Auto => {
                 // Should not reach here, but fallback to parallel
                 self.search_parallel(rei_id, query, &config).await
             }
+            // 単体戦略
+            HybridStrategy::SingleRag => self.search_single_rag(rei_id, query, &config).await,
+            HybridStrategy::SingleDb => self.search_single_db(rei_id, query, &config).await,
+            HybridStrategy::SingleGraph => self.search_single_graph(rei_id, query, &config).await,
         }?;
 
         // Apply context weights (boost/exclude)
@@ -417,6 +478,289 @@ impl HybridSearchService {
             db_sources,
             strategy_used: HybridStrategy::Parallel,
         })
+    }
+
+    // ========== 単体戦略 ==========
+
+    /// SingleRag: RAG (Qdrant) search only
+    async fn search_single_rag(
+        &self,
+        rei_id: &Uuid,
+        query: &str,
+        config: &HybridSearchConfig,
+    ) -> Result<HybridSearchResult, HybridSearchError> {
+        let query_vector = self
+            .embedding
+            .embed(query)
+            .await
+            .map_err(|e| HybridSearchError::Embedding(e.to_string()))?;
+
+        let rei_id_str = rei_id.to_string();
+        let rag_results = self
+            .memory_kai
+            .search_memories_with_scores(&rei_id_str, query_vector, config.rag_limit)
+            .await
+            .map_err(|e| HybridSearchError::RagSearch(e.to_string()))?;
+
+        tracing::info!("SingleRag: Found {} memories", rag_results.len());
+
+        let rag_sources: Vec<String> = rag_results.iter().map(|(m, _)| m.id.clone()).collect();
+        let memories: Vec<ScoredMemory> = rag_results
+            .into_iter()
+            .map(|(memory, score)| ScoredMemory { memory, score })
+            .collect();
+
+        Ok(HybridSearchResult {
+            memories,
+            rag_sources,
+            graph_sources: Vec::new(),
+            db_sources: Vec::new(),
+            strategy_used: HybridStrategy::SingleRag,
+        })
+    }
+
+    /// SingleDb: DB full-text (PostgreSQL) search only
+    async fn search_single_db(
+        &self,
+        rei_id: &Uuid,
+        query: &str,
+        config: &HybridSearchConfig,
+    ) -> Result<HybridSearchResult, HybridSearchError> {
+        let doc_store = match &self.doc_store {
+            Some(ds) => ds,
+            None => {
+                return Ok(HybridSearchResult {
+                    memories: Vec::new(),
+                    rag_sources: Vec::new(),
+                    graph_sources: Vec::new(),
+                    db_sources: Vec::new(),
+                    strategy_used: HybridStrategy::SingleDb,
+                });
+            }
+        };
+
+        let documents = doc_store
+            .search_fulltext(*rei_id, query, config.rag_limit)
+            .await
+            .map_err(|e| HybridSearchError::DbSearch(e.to_string()))?;
+
+        tracing::info!("SingleDb: Found {} documents", documents.len());
+
+        let mut db_sources = Vec::new();
+        let mut memories = Vec::new();
+
+        for doc in documents {
+            let memory_id = format!("doc:{}", doc.id);
+            db_sources.push(memory_id.clone());
+            memories.push(ScoredMemory {
+                memory: Memory {
+                    id: memory_id,
+                    rei_id: rei_id.to_string(),
+                    content: doc.raw_content,
+                    memory_type: crate::models::MemoryType::Fact,
+                    importance: 0.7,
+                    tags: vec!["source:db".to_string(), "document".to_string()],
+                    topic_path: None,
+                    created_at: doc.created_at,
+                    metadata: Some(serde_json::json!({
+                        "doc_id": doc.id.to_string(),
+                        "title": doc.title,
+                        "source_path": doc.source_path,
+                    })),
+                },
+                score: 0.7,
+            });
+        }
+
+        Ok(HybridSearchResult {
+            memories,
+            rag_sources: Vec::new(),
+            graph_sources: Vec::new(),
+            db_sources,
+            strategy_used: HybridStrategy::SingleDb,
+        })
+    }
+
+    /// SingleGraph: Graph (Neo4j) search only
+    async fn search_single_graph(
+        &self,
+        rei_id: &Uuid,
+        query: &str,
+        config: &HybridSearchConfig,
+    ) -> Result<HybridSearchResult, HybridSearchError> {
+        let graph_nodes = self
+            .graph_kai
+            .find_nodes_by_text(*rei_id, query, None, config.rag_limit)
+            .await?;
+
+        tracing::info!("SingleGraph: Found {} nodes", graph_nodes.len());
+
+        let mut graph_sources = Vec::new();
+        let mut memories = Vec::new();
+
+        for node in graph_nodes {
+            let scored = self.node_to_scored_memory(rei_id, &node);
+            graph_sources.push(scored.memory.id.clone());
+            memories.push(scored);
+        }
+
+        Ok(HybridSearchResult {
+            memories,
+            rag_sources: Vec::new(),
+            graph_sources,
+            db_sources: Vec::new(),
+            strategy_used: HybridStrategy::SingleGraph,
+        })
+    }
+
+    // ========== MultiHop戦略 ==========
+
+    /// MultiHop: RAG → Graph expansion → RAG (iterative)
+    async fn search_multi_hop(
+        &self,
+        rei_id: &Uuid,
+        query: &str,
+        config: &HybridSearchConfig,
+    ) -> Result<HybridSearchResult, HybridSearchError> {
+        let mut all_memories: HashMap<String, ScoredMemory> = HashMap::new();
+        let mut rag_sources = Vec::new();
+        let mut graph_sources = Vec::new();
+
+        // HOP 1: Initial RAG search
+        let query_vector = self
+            .embedding
+            .embed(query)
+            .await
+            .map_err(|e| HybridSearchError::Embedding(e.to_string()))?;
+
+        let rei_id_str = rei_id.to_string();
+        let initial_results = self
+            .memory_kai
+            .search_memories_with_scores(&rei_id_str, query_vector, config.rag_limit)
+            .await
+            .map_err(|e| HybridSearchError::RagSearch(e.to_string()))?;
+
+        tracing::info!("MultiHop HOP1: Found {} initial memories", initial_results.len());
+
+        for (memory, score) in &initial_results {
+            rag_sources.push(memory.id.clone());
+            all_memories.insert(memory.id.clone(), ScoredMemory {
+                memory: memory.clone(),
+                score: *score,
+            });
+        }
+
+        // HOP 2: Extract keywords from initial results
+        let keywords = self.extract_keywords_from_memories(&initial_results);
+        tracing::info!("MultiHop HOP2: Extracted keywords: {:?}", keywords);
+
+        if keywords.is_empty() {
+            return Ok(HybridSearchResult {
+                memories: all_memories.into_values().collect(),
+                rag_sources,
+                graph_sources,
+                db_sources: Vec::new(),
+                strategy_used: HybridStrategy::MultiHop,
+            });
+        }
+
+        // HOP 3: Graph expansion using keywords
+        let mut expanded_keywords: HashSet<String> = keywords.iter().cloned().collect();
+
+        for keyword in &keywords {
+            let graph_nodes = self
+                .graph_kai
+                .find_nodes_by_text(*rei_id, keyword, None, 5)
+                .await?;
+
+            for node in &graph_nodes {
+                // Get neighbors for expansion
+                let neighbors = self.graph_kai.get_neighbors(node.id, config.graph_depth).await?;
+                for neighbor in neighbors {
+                    expanded_keywords.insert(neighbor.text.clone());
+
+                    // Add graph nodes to results
+                    let scored = self.node_to_scored_memory(rei_id, &neighbor);
+                    if !all_memories.contains_key(&scored.memory.id) {
+                        graph_sources.push(scored.memory.id.clone());
+                        all_memories.insert(scored.memory.id.clone(), scored);
+                    }
+                }
+            }
+        }
+
+        tracing::info!("MultiHop HOP3: Expanded to {} keywords", expanded_keywords.len());
+
+        // HOP 4: Second RAG search with expanded keywords
+        let expanded_query = expanded_keywords
+            .into_iter()
+            .take(10)
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        if !expanded_query.is_empty() {
+            let expanded_vector = self
+                .embedding
+                .embed(&expanded_query)
+                .await
+                .map_err(|e| HybridSearchError::Embedding(e.to_string()))?;
+
+            let expanded_results = self
+                .memory_kai
+                .search_memories_with_scores(&rei_id_str, expanded_vector, config.rag_limit)
+                .await
+                .map_err(|e| HybridSearchError::RagSearch(e.to_string()))?;
+
+            tracing::info!("MultiHop HOP4: Found {} expanded memories", expanded_results.len());
+
+            for (memory, score) in expanded_results {
+                if !all_memories.contains_key(&memory.id) {
+                    rag_sources.push(memory.id.clone());
+                    // Slightly lower score for expanded results
+                    all_memories.insert(memory.id.clone(), ScoredMemory {
+                        memory,
+                        score: score * 0.9,
+                    });
+                }
+            }
+        }
+
+        Ok(HybridSearchResult {
+            memories: all_memories.into_values().collect(),
+            rag_sources,
+            graph_sources,
+            db_sources: Vec::new(),
+            strategy_used: HybridStrategy::MultiHop,
+        })
+    }
+
+    /// Extract keywords from memory results (for MultiHop)
+    fn extract_keywords_from_memories(&self, memories: &[(Memory, f32)]) -> Vec<String> {
+        let mut keywords = Vec::new();
+
+        for (memory, _score) in memories.iter().take(3) {
+            // Extract from tags
+            for tag in &memory.tags {
+                if !tag.starts_with("source:") && !tag.starts_with("node_type:") {
+                    keywords.push(tag.clone());
+                }
+            }
+
+            // Extract first few significant words from content
+            let words: Vec<&str> = memory.content
+                .split_whitespace()
+                .filter(|w| w.len() > 3)
+                .take(5)
+                .collect();
+            keywords.extend(words.into_iter().map(String::from));
+        }
+
+        // Deduplicate
+        keywords.sort();
+        keywords.dedup();
+        keywords.truncate(10);
+
+        keywords
     }
 
     /// Convert a GraphNode to a ScoredMemory (uses weight as score)

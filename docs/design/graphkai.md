@@ -311,40 +311,225 @@ pub struct AppState {
 
 ## Hybrid Search
 
-### Search Strategies
+### Search Strategies (8種類)
 
 ```rust
-pub enum SearchStrategy {
-    GraphFirst,     // Specific concept query → Graph traversal → RAG supplement
-    RagFirst,       // Broad/fuzzy query → RAG → Graph expansion
-    Parallel,       // Execute both and merge
-    Auto,           // Automatically determine based on query
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum HybridStrategy {
+    // === 複合戦略 (5つ) ===
+    GraphFirst,     // Graph → Keywords → RAG
+    RagFirst,       // RAG → Keywords → Graph → RAG
+    Parallel,       // RAG + DB + Graph 同時実行
+    MultiHop,       // RAG → Graph → RAG (iterative, depth指定)
+    #[default]
+    Auto,           // クエリから自動判定
+
+    // === 単体戦略 (3つ) ===
+    SingleRag,      // RAG (Qdrant) only
+    SingleDb,       // DB full-text (PostgreSQL) only
+    SingleGraph,    // Graph (Neo4j) only
 }
 ```
 
-### Result Merging
+### Strategy Set (複数戦略の組み合わせ)
+
+```rust
+/// 戦略セット（複数指定 → 並列実行）
+pub struct StrategySet {
+    pub strategies: HashSet<HybridStrategy>,
+    pub hop_depth: u32,  // MultiHop用
+}
+
+// 使用例
+StrategySet::single(HybridStrategy::Auto)                    // 従来通り
+StrategySet::multiple([GraphFirst, SingleDb])                // GraphFirst + DB並列
+StrategySet::multiple([MultiHop, SingleDb])                  // MultiHop + DB並列
+```
+
+| 設定 | 動作 |
+|------|------|
+| `[Auto]` | クエリから自動判定 |
+| `[SingleRag, SingleDb]` | RAG + DB 並列 |
+| `[GraphFirst, SingleDb]` | GraphFirst + DB 並列 |
+| `[MultiHop]` | RAG → Graph → RAG (iterative) |
+| `[MultiHop, SingleDb]` | MultiHop + DB 並列 |
+
+### MultiHop Search Flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    HybridSearchService                           │
-│                                                                  │
-│  ┌──────────────────┐     ┌──────────────────┐                 │
-│  │   MemoryKai      │     │    GraphKai      │                 │
-│  │   (Qdrant)       │     │    (Neo4j)       │                 │
-│  └────────┬─────────┘     └────────┬─────────┘                 │
-│           │                        │                            │
-│           ▼                        ▼                            │
-│  ┌─────────────────────────────────────────────┐               │
-│  │            ResultMerger                      │               │
-│  │  - Score normalization                       │               │
-│  │  - Deduplication                             │               │
-│  │  - Graph path → Memory conversion            │               │
-│  └─────────────────────────────────────────────┘               │
-└─────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-                  Vec<Memory> (existing type)
+┌─────────────────────────────────────────────────────────────────────┐
+│                    MultiHop Search Flow                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Query: "async runtime"                                              │
+│      │                                                               │
+│      ▼                                                               │
+│  ┌─────────────────────────────────────────┐                        │
+│  │ HOP 1: Initial RAG Search               │                        │
+│  │   Qdrant vector search                  │                        │
+│  │   Output: [tokio docs, async-std...]    │                        │
+│  └─────────────────────────────────────────┘                        │
+│      │                                                               │
+│      ▼                                                               │
+│  ┌─────────────────────────────────────────┐                        │
+│  │ HOP 2: Keyword Extraction               │                        │
+│  │   - Tags from memories                  │                        │
+│  │   - Significant words from content      │                        │
+│  │   Output: ["tokio", "polling", "Pin"]   │                        │
+│  └─────────────────────────────────────────┘                        │
+│      │                                                               │
+│      ▼                                                               │
+│  ┌─────────────────────────────────────────┐                        │
+│  │ HOP 3: Graph Expansion                  │                        │
+│  │   Neo4j: find_nodes + get_neighbors     │                        │
+│  │   Output: ["smol", "mio", "epoll",      │                        │
+│  │            "green threads", "executor"] │                        │
+│  └─────────────────────────────────────────┘                        │
+│      │                                                               │
+│      ▼                                                               │
+│  ┌─────────────────────────────────────────┐                        │
+│  │ HOP 4: Expanded RAG Search              │                        │
+│  │   Embed expanded keywords               │                        │
+│  │   Search with lower score (0.9x)        │                        │
+│  └─────────────────────────────────────────┘                        │
+│      │                                                               │
+│      ▼                                                               │
+│  Merge all results → apply_context → Final                          │
+│                                                                      │
+└─────────────────────────────────────────────────────────────────────┘
 ```
+
+### Integrated Search Flow (Parallel)
+
+```
+Query + Context
+      ↓
+      ├──────────────────────┬────────────────────────┐
+      ↓                      ↓                        ↓
+[Path A: RAG]          [Path B: DB全文検索]     [Path C: Graph]
+  ↓                        ↓                        ↓
+Qdrant Vector         PostgreSQL ILIKE        Neo4j Text
+Search                + to_tsvector           Search
+  ↓                        ↓                        ↓
+  └──────────────┬─────────┴────────────────────────┘
+                 ↓
+          [Merge & Dedupe]
+                 ↓
+          [Post Re-ranking]
+            apply_context()
+            - topic_path match: 1.5x boost
+            - tags match: 1.2x boost
+            - content match: 1.0x boost
+            - weight=0: exclude
+                 ↓
+          [Sort by Score]
+                 ↓
+            Results
+```
+
+### Result Sources
+
+```rust
+pub struct HybridSearchResult {
+    pub memories: Vec<ScoredMemory>,
+    pub rag_sources: Vec<String>,     // Memory IDs from Qdrant
+    pub graph_sources: Vec<String>,   // Node IDs from Neo4j
+    pub db_sources: Vec<String>,      // Document IDs from PostgreSQL
+    pub strategy_used: HybridStrategy,
+}
+```
+
+### Context Weights (Post Re-ranking)
+
+```rust
+/// Context weight for boosting/excluding topics
+/// - weight > 0: boost (1.0 = full boost)
+/// - weight = 0: exclude
+pub type ContextWeights = HashMap<String, f32>;
+
+pub struct HybridSearchConfig {
+    pub strategy: HybridStrategy,
+    pub rag_limit: usize,
+    pub graph_depth: u32,
+    pub min_similarity: f32,
+    pub context: ContextWeights,  // For post re-ranking
+}
+```
+
+## Micro-Expertise Generation
+
+### Concept
+
+Unlike traditional RAG that chunks existing documents, Kaiba generates **structured Micro-Expertises** at creation time:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ TRADITIONAL RAG                                              │
+│                                                              │
+│  Long Document → Chunker → Chunks[] → Embeddings → Qdrant   │
+│                    ↓                                         │
+│              (post-hoc splitting, metadata extraction)       │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│ KAIBA APPROACH                                               │
+│                                                              │
+│  Web Results → LLM Digest → Micro-Expertise[] → Qdrant      │
+│                    ↓              ↓                          │
+│              (structured prompt)  (topic_path, concepts      │
+│                                    extracted in-line)        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation
+
+- **Separator-based parsing**: LLM output uses `=====` delimiter
+- **Per-expertise storage**: Each expertise stored as separate Memory
+- **topic_path extraction**: Hierarchical category from expertise content
+
+```rust
+pub struct Memory {
+    pub id: String,
+    pub rei_id: String,
+    pub content: String,
+    pub memory_type: MemoryType,
+    pub importance: f32,
+    pub tags: Vec<String>,
+    pub topic_path: Option<String>,  // "Rust > Concurrency > Async"
+    pub metadata: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+```
+
+## Context-Aware Search Protocol
+
+### Request Structure
+
+```json
+{
+  "search_query": "term",
+  "context_injection": {
+    "positive_weights": [
+      { "topic": "Rust", "weight": 1.0 },
+      { "topic": "Terminal UI", "weight": 0.8 }
+    ],
+    "negative_weights": [
+      { "topic": "Finance", "weight": 0.0 }
+    ]
+  }
+}
+```
+
+### Processing Flow
+
+1. **Parallel Search**: Execute RAG + DB + Graph simultaneously
+2. **Merge & Dedupe**: Combine results with ID-based deduplication
+3. **Exclude Filter**: Remove matches where weight = 0
+4. **Boost Scoring**: Apply priority multipliers
+   - topic_path match: 1.5x
+   - tags match: 1.2x
+   - content match: 1.0x
+5. **Re-sort**: Order by final score descending
 
 ## Linkage Configuration
 
@@ -422,43 +607,58 @@ NEO4J_PASSWORD="..."
 
 ## Implementation Phases
 
-### Phase 0: DocStore (Source of Truth)
-- [ ] `Document` entity definition
-- [ ] `DocRepository` trait definition
-- [ ] PostgreSQL implementation (`documents` table)
-- [ ] `POST /kaiba/rei/{id}/documents` endpoint
+### Phase 0: DocStore (Source of Truth) ✅
+- [x] `Document` entity definition
+- [x] `DocRepository` trait definition
+- [x] PostgreSQL implementation (`documents` table)
+- [x] `POST /kaiba/rei/{id}/documents` endpoint
+- [x] `search_fulltext()` for DB full-text search
 
-### Phase 1: Emphasis Parser
-- [ ] `EmphasisNode` / `EmphasisStyle` types
-- [ ] Markdown parser (pulldown-cmark extension)
-- [ ] Context window extraction (±50 tokens)
-- [ ] Weight calculation logic
+### Phase 1: Emphasis Parser ✅
+- [x] `EmphasisNode` / `EmphasisStyle` types
+- [x] Markdown parser (pulldown-cmark extension)
+- [x] Context window extraction (±50 tokens)
+- [x] Weight calculation logic
 
-### Phase 2: GraphKai Adapter (Neo4j)
-- [ ] Neo4j Rust client integration (neo4rs)
-- [ ] `GraphRepository` trait definition
-- [ ] `GraphNode` / `GraphEdge` entities
-- [ ] Basic CRUD operations
+### Phase 2: GraphKai Adapter (Neo4j) ✅
+- [x] Neo4j Rust client integration (neo4rs)
+- [x] `GraphRepository` trait definition
+- [x] `GraphNode` / `GraphEdge` entities
+- [x] Basic CRUD operations
 
-### Phase 3: Graph Builder Engine
-- [ ] `LinkageConfig` YAML loading
-- [ ] Contextual embedding generation
-- [ ] Similarity-based auto edge generation
-- [ ] Co-occurrence detection
-- [ ] `POST /kaiba/rei/{id}/graph/rebuild` endpoint
+### Phase 3: Graph Builder Engine ✅
+- [x] `LinkageConfig` default implementation
+- [x] Contextual embedding generation
+- [x] Similarity-based auto edge generation
+- [x] Co-occurrence detection
+- [x] `POST /kaiba/rei/{id}/graph/rebuild` endpoint
 
-### Phase 4: Hybrid Search Router
-- [ ] `HybridSearchService` implementation
-- [ ] Query classification logic
-- [ ] GraphFirst / RagFirst search implementation
-- [ ] Context merge algorithm
-- [ ] Replace existing `search_memories_for_rag`
+### Phase 4: Hybrid Search Router ✅
+- [x] `HybridSearchService` implementation
+- [x] Query classification logic (Japanese support)
+- [x] GraphFirst / RagFirst / Parallel search implementation
+- [x] **Triple-store parallel search** (RAG + DB + Graph)
+- [x] Context merge algorithm
+- [x] **Post Re-ranking** with topic_path/tags/content priority
+- [x] Replace existing `search_memories_for_rag`
 
-### Phase 5: Operations
+### Phase 5: Triple-Store Document Ingestion ✅
+- [x] Document ingest saves to all 3 stores:
+  - DocStore (PostgreSQL) - Source of Truth
+  - MemoryKai (Qdrant) - RAG
+  - GraphKai (Neo4j) - Knowledge Graph
+- [x] `topic_path` field in Memory model
+
+### Phase 6: Micro-Expertise Generation ✅
+- [x] Separator-based parsing (`=====`) for multiple expertises
+- [x] `topic_path` extraction from expertise content
+- [x] Each expertise stored as separate Memory in Qdrant
+
+### Phase 7: Operations (Partial)
 - [ ] Linkage strategy config API
 - [ ] Graph visualization endpoint
 - [ ] Parameter tuning UI
-- [ ] Incremental indexing (`list_modified_since`)
+- [x] Incremental indexing (`find_modified_since`)
 
 ## Design Principles
 
