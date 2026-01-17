@@ -18,6 +18,7 @@ use adapters::{
     PgTeiRepository,
 };
 use application::{ReiService, TeiService};
+use services::decision::{create_decision_engine, LlmEngineConfig};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
 use services::scheduler;
@@ -151,6 +152,19 @@ async fn main(
         }
     };
 
+    // Initialize Decision Engine (LLM-based if GROQ_API_KEY is set, otherwise rule-based)
+    let decision_engine = match secrets.get("GROQ_API_KEY") {
+        Some(api_key) => {
+            tracing::info!("🤖 Decision engine: LLM (Groq llama-3.2-3b-preview)");
+            let config = LlmEngineConfig::groq(&api_key, "llama-3.2-3b-preview");
+            Arc::from(create_decision_engine(Some(config)))
+        }
+        None => {
+            tracing::info!("🤖 Decision engine: Rule-based (no GROQ_API_KEY)");
+            Arc::from(create_decision_engine(None))
+        }
+    };
+
     // Initialize application services
     let rei_repo = Arc::new(PgReiRepository::new(pool.clone()));
     let tei_repo = Arc::new(PgTeiRepository::new(pool.clone()));
@@ -218,6 +232,7 @@ async fn main(
         web_search,
         gemini_api_key,
         scheduler_interval,
+        decision_engine,
         Some(state.webhook_repo.clone()),
         Some(state.http_webhook.clone()),
         doc_store_dyn,

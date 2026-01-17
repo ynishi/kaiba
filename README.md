@@ -32,15 +32,29 @@
 │     Backend     │
 └────────┬────────┘
          │
-         ├─────► Qdrant Cloud (Memory Ocean)
+         ├─────► MemoryKai (Qdrant) - Vector Search / RAG
          │        - mai_memories
          │        - yui_memories
-         │        - ...
          │
-         └─────► Shuttle Postgres (Metadata)
-                  - personas (Rei)
-                  - persona_states
+         ├─────► GraphKai (Neo4j) - Knowledge Graph
+         │        - Concept nodes, relationships
+         │        - Emphasis-based extraction
+         │
+         ├─────► DocStore (Postgres) - Source of Truth
+         │        - Documents, metadata
+         │
+         └─────► Shuttle Postgres (State)
+                  - Rei (personas)
+                  - ReiState (energy, mood)
 ```
+
+### Triple-Store Architecture
+
+| Store | Technology | Purpose |
+|:------|:-----------|:--------|
+| **DocStore** | PostgreSQL | Source of Truth for documents |
+| **MemoryKai** | Qdrant | Vector search, RAG retrieval |
+| **GraphKai** | Neo4j | Knowledge graph, relationships |
 
 ## Project Structure
 
@@ -116,9 +130,24 @@ Content-Type: application/json
 
 {
   "query": "Rust async patterns",
-  "limit": 5
+  "limit": 5,
+  "strategy": "auto",
+  "context": {"Rust": 1.0, "Finance": 0}
 }
 ```
+
+**Search Strategies:**
+
+| Strategy | Description |
+|:---------|:------------|
+| `auto` | Automatically select best strategy (default) |
+| `parallel` | RAG + Graph in parallel |
+| `graph_first` | Graph traversal, then RAG supplement |
+| `rag_first` | RAG search, then Graph expansion |
+| `multi_hop` | RAG → Graph → RAG (deep knowledge) |
+| `single_rag` | RAG only |
+| `single_db` | Database full-text only |
+| `single_graph` | Graph only |
 
 ## Setup
 
@@ -291,6 +320,22 @@ kaiba-claude cd4efdf2-be22-41ec-9238-227f5ccb1523
 This pattern keeps Kaiba focused on **identity and memory**, while letting you choose
 any LLM or execution environment as the Tei.
 
+## Decision Engine
+
+Kaiba uses a pluggable decision engine for autonomous actions:
+
+| Engine | Description |
+|:-------|:------------|
+| **Rule-Based** | Fast, deterministic (default if no GROQ_API_KEY) |
+| **LLM (Groq)** | Llama 3.2 3B for personality-aware decisions |
+
+Set `GROQ_API_KEY` in Secrets.toml to enable LLM-based decisions with Rei's persona.
+
+```bash
+# Deploy with secrets
+cargo shuttle deploy --secrets Secrets.toml
+```
+
 ## Roadmap
 
 - [x] Basic API structure (Axum + Shuttle)
@@ -303,6 +348,10 @@ any LLM or execution environment as the Tei.
 - [x] Decision system (Learn/Digest/Rest)
 - [x] Energy regeneration
 - [x] Prompt endpoint for external Tei (Claude Code, Casting, etc.)
+- [x] GraphKai (Neo4j) - Knowledge Graph
+- [x] Triple-Store architecture (DocStore + MemoryKai + GraphKai)
+- [x] Hybrid Search (8 strategies including MultiHop)
+- [x] LLM Decision Engine (Groq/Ollama)
 - [ ] Web UI (optional, later)
 
 ## Contributing
@@ -316,4 +365,4 @@ MIT
 ---
 
 **Built with**
-🦀 Rust | 🚀 Shuttle | 🌊 Qdrant | 🧠 Kaiba
+🦀 Rust | 🚀 Shuttle | 🌊 Qdrant | 🕸️ Neo4j | 🤖 Groq | 🧠 Kaiba

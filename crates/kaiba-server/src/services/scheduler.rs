@@ -8,7 +8,7 @@
 
 use crate::adapters::{HttpWebhook, PgReiWebhookRepository};
 use crate::models::{MemoryType, Rei, ReiState};
-use crate::services::decision::{Action, DecisionMaker};
+use crate::services::decision::{Action, DecisionEngine};
 use crate::services::digest::{DigestResult, DigestService};
 use crate::services::embedding::EmbeddingService;
 use crate::services::qdrant::MemoryKai;
@@ -50,6 +50,8 @@ pub struct AutonomousScheduler {
     web_search: WebSearchAgent,
     gemini_api_key: Option<String>,
     config: SchedulerConfig,
+    // Decision engine (LLM or rule-based)
+    decision_engine: Arc<dyn DecisionEngine>,
     // Webhook support
     webhook_repo: Option<Arc<PgReiWebhookRepository>>,
     http_webhook: Option<Arc<HttpWebhook>>,
@@ -68,6 +70,7 @@ impl AutonomousScheduler {
         web_search: WebSearchAgent,
         gemini_api_key: Option<String>,
         config: Option<SchedulerConfig>,
+        decision_engine: Arc<dyn DecisionEngine>,
         webhook_repo: Option<Arc<PgReiWebhookRepository>>,
         http_webhook: Option<Arc<HttpWebhook>>,
         doc_store: Option<Arc<dyn DocRepository>>,
@@ -80,6 +83,7 @@ impl AutonomousScheduler {
             web_search,
             gemini_api_key,
             config: config.unwrap_or_default(),
+            decision_engine,
             webhook_repo,
             http_webhook,
             doc_store,
@@ -152,9 +156,8 @@ impl AutonomousScheduler {
         // Count learning memories (simplified - count recent learnings)
         let memories_count = self.count_learning_memories(rei.id).await.unwrap_or(0);
 
-        // Make decision
-        let decision_maker = DecisionMaker::new(None);
-        let decision = decision_maker.decide(&state, memories_count);
+        // Make decision using the configured engine (LLM or rule-based)
+        let decision = self.decision_engine.decide(&state, memories_count).await;
 
         tracing::info!(
             "🧠 {} decides: {} ({})",
@@ -441,6 +444,7 @@ pub fn maybe_start_scheduler(
     web_search: Option<WebSearchAgent>,
     gemini_api_key: Option<String>,
     interval_secs: Option<u64>,
+    decision_engine: Arc<dyn DecisionEngine>,
     webhook_repo: Option<Arc<PgReiWebhookRepository>>,
     http_webhook: Option<Arc<HttpWebhook>>,
     doc_store: Option<Arc<dyn DocRepository>>,
@@ -462,6 +466,7 @@ pub fn maybe_start_scheduler(
         web_search,
         gemini_api_key,
         Some(config),
+        decision_engine,
         webhook_repo,
         http_webhook,
         doc_store,

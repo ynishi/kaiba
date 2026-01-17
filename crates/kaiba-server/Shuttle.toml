@@ -26,5 +26,8 @@ name = "kaiba"
 #   OPENAI_API_KEY      - OpenAI API key for embeddings
 #   GEMINI_API_KEY      - Google Gemini API key for web search
 #
+# Decision Engine (optional, falls back to rule-based):
+#   GROQ_API_KEY        - Groq API key for LLM-based decisions
+#
 # Optional:
 #   LEARNING_INTERVAL_SECS - Autonomous learning interval (default: 3600)

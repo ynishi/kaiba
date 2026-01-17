@@ -79,7 +79,9 @@ fn extract_topic_path(chunk: &str) -> (String, Option<String>) {
         let trimmed = line.trim();
         if trimmed.to_lowercase().starts_with("topic_path:") {
             // Extract the path after the colon
-            let path = trimmed.split_once(':').map(|x| x.1)
+            let path = trimmed
+                .split_once(':')
+                .map(|x| x.1)
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty());
             topic_path = path;
