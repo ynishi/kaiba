@@ -166,10 +166,11 @@ async fn main(
     // Initialize HybridSearchService if all required services are available
     let hybrid_search = match (&memory_kai, &graph_kai, &embedding) {
         (Some(mem), Some(graph), Some(emb)) => {
-            tracing::info!("🔀 HybridSearchService initialized (RAG + Graph)");
+            tracing::info!("🔀 HybridSearchService initialized (RAG + Graph + DB)");
             Some(Arc::new(HybridSearchService::new(
                 mem.clone(),
                 graph.clone(),
+                Some(doc_store.clone() as Arc<dyn kaiba::DocRepository>),
                 emb.clone(),
             )))
         }

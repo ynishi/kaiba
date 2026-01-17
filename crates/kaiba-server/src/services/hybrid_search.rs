@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// - weight = 0: exclude
 pub type ContextWeights = HashMap<String, f32>;
 
-use kaiba::{DomainError, GraphNode, GraphRepository};
+use kaiba::{DocRepository, DomainError, GraphNode, GraphRepository};
 
 use crate::adapters::Neo4jGraphRepository;
 use crate::models::Memory;
@@ -32,6 +32,9 @@ pub enum HybridSearchError {
 
     #[error("Graph search failed: {0}")]
     GraphSearch(#[from] DomainError),
+
+    #[error("DB search failed: {0}")]
+    DbSearch(String),
 }
 
 /// Search strategy for hybrid queries
@@ -64,6 +67,8 @@ pub struct HybridSearchResult {
     pub rag_sources: Vec<String>,
     /// Memory IDs that came from Graph (Neo4j)
     pub graph_sources: Vec<String>,
+    /// Memory IDs that came from DB full-text search (PostgreSQL)
+    pub db_sources: Vec<String>,
     /// Strategy that was actually used
     pub strategy_used: HybridStrategy,
 }
@@ -104,10 +109,11 @@ impl HybridSearchConfig {
     }
 }
 
-/// Unified search service combining RAG and Graph
+/// Unified search service combining RAG, Graph, and DB full-text search
 pub struct HybridSearchService {
     memory_kai: Arc<MemoryKai>,
     graph_kai: Arc<Neo4jGraphRepository>,
+    doc_store: Option<Arc<dyn DocRepository>>,
     embedding: EmbeddingService,
 }
 
@@ -116,11 +122,13 @@ impl HybridSearchService {
     pub fn new(
         memory_kai: Arc<MemoryKai>,
         graph_kai: Arc<Neo4jGraphRepository>,
+        doc_store: Option<Arc<dyn DocRepository>>,
         embedding: EmbeddingService,
     ) -> Self {
         Self {
             memory_kai,
             graph_kai,
+            doc_store,
             embedding,
         }
     }
@@ -225,6 +233,7 @@ impl HybridSearchService {
             memories: memories_map.into_values().collect(),
             rag_sources,
             graph_sources,
+            db_sources: Vec::new(),
             strategy_used: HybridStrategy::GraphFirst,
         })
     }
@@ -298,11 +307,12 @@ impl HybridSearchService {
             memories,
             rag_sources,
             graph_sources,
+            db_sources: Vec::new(),
             strategy_used: HybridStrategy::RagFirst,
         })
     }
 
-    /// Parallel: Execute both searches and merge
+    /// Parallel: Execute RAG, Graph, and DB searches and merge
     async fn search_parallel(
         &self,
         rei_id: &Uuid,
@@ -311,6 +321,7 @@ impl HybridSearchService {
     ) -> Result<HybridSearchResult, HybridSearchError> {
         let mut rag_sources = Vec::new();
         let mut graph_sources = Vec::new();
+        let mut db_sources = Vec::new();
         let mut memories_map: HashMap<String, ScoredMemory> = HashMap::new();
 
         // Generate embedding once
@@ -323,16 +334,28 @@ impl HybridSearchService {
         // Prepare rei_id string for RAG search
         let rei_id_str = rei_id.to_string();
 
-        // Execute both searches in parallel
-        let (rag_result, graph_result) = tokio::join!(
-            self.memory_kai.search_memories_with_scores(
-                &rei_id_str,
-                query_vector,
-                config.rag_limit
-            ),
-            self.graph_kai
-                .find_nodes_by_text(*rei_id, query, None, config.rag_limit)
+        // Execute all searches in parallel (RAG + Graph + DB)
+        let rag_future = self.memory_kai.search_memories_with_scores(
+            &rei_id_str,
+            query_vector,
+            config.rag_limit,
         );
+
+        let graph_future = self
+            .graph_kai
+            .find_nodes_by_text(*rei_id, query, None, config.rag_limit);
+
+        // DB full-text search (if doc_store is available)
+        let db_future = async {
+            if let Some(doc_store) = &self.doc_store {
+                doc_store.search_fulltext(*rei_id, query, config.rag_limit).await
+            } else {
+                Ok(vec![])
+            }
+        };
+
+        let (rag_result, graph_result, db_result) =
+            tokio::join!(rag_future, graph_future, db_future);
 
         // Process RAG results with actual scores
         if let Ok(rag_results) = rag_result {
@@ -355,10 +378,43 @@ impl HybridSearchService {
             }
         }
 
+        // Process DB full-text search results
+        if let Ok(documents) = db_result {
+            tracing::info!("Parallel: Found {} documents from DB", documents.len());
+            for doc in documents {
+                let memory_id = format!("doc:{}", doc.id);
+                if !memories_map.contains_key(&memory_id) {
+                    db_sources.push(memory_id.clone());
+                    memories_map.insert(
+                        memory_id.clone(),
+                        ScoredMemory {
+                            memory: Memory {
+                                id: memory_id,
+                                rei_id: rei_id.to_string(),
+                                content: doc.raw_content,
+                                memory_type: crate::models::MemoryType::Fact,
+                                importance: 0.7, // Default importance for DB results
+                                tags: vec!["source:db".to_string(), "document".to_string()],
+                                topic_path: None,
+                                created_at: doc.created_at,
+                                metadata: Some(serde_json::json!({
+                                    "doc_id": doc.id.to_string(),
+                                    "title": doc.title,
+                                    "source_path": doc.source_path,
+                                })),
+                            },
+                            score: 0.7, // DB full-text doesn't provide similarity score
+                        },
+                    );
+                }
+            }
+        }
+
         Ok(HybridSearchResult {
             memories: memories_map.into_values().collect(),
             rag_sources,
             graph_sources,
+            db_sources,
             strategy_used: HybridStrategy::Parallel,
         })
     }
@@ -384,9 +440,11 @@ impl HybridSearchService {
         }
     }
 
-    /// Apply context weights to search results
+    /// Apply context weights to search results (Post Re-ranking)
     /// - weight > 0: boost score
     /// - weight = 0: exclude
+    ///
+    /// Matches against: topic_path (highest priority), tags, content
     fn apply_context(
         &self,
         mut result: HybridSearchResult,
@@ -414,20 +472,43 @@ impl HybridSearchService {
             .memories
             .into_iter()
             .filter(|scored| {
-                // Exclude if content contains any exclude topic
+                // Exclude if topic_path, tags, or content contains any exclude topic
+                let topic_lower = scored.memory.topic_path.as_deref().unwrap_or("").to_lowercase();
+                let tags_lower: Vec<String> = scored.memory.tags.iter().map(|t| t.to_lowercase()).collect();
                 let content_lower = scored.memory.content.to_lowercase();
-                !exclude_topics
-                    .iter()
-                    .any(|topic| content_lower.contains(&topic.to_lowercase()))
+
+                !exclude_topics.iter().any(|topic| {
+                    let topic_lc = topic.to_lowercase();
+                    topic_lower.contains(&topic_lc)
+                        || tags_lower.iter().any(|t| t.contains(&topic_lc))
+                        || content_lower.contains(&topic_lc)
+                })
             })
             .map(|mut scored| {
                 // Boost score based on matching topics
+                // Priority: topic_path (1.5x) > tags (1.2x) > content (1.0x)
+                let topic_lower = scored.memory.topic_path.as_deref().unwrap_or("").to_lowercase();
+                let tags_lower: Vec<String> = scored.memory.tags.iter().map(|t| t.to_lowercase()).collect();
                 let content_lower = scored.memory.content.to_lowercase();
+
                 let mut total_boost = 0.0;
                 let mut match_count = 0;
 
                 for (topic, weight) in &boost_topics {
-                    if content_lower.contains(&topic.to_lowercase()) {
+                    let topic_lc = topic.to_lowercase();
+
+                    // topic_path match (highest priority - 1.5x multiplier)
+                    if topic_lower.contains(&topic_lc) {
+                        total_boost += weight * 1.5;
+                        match_count += 1;
+                    }
+                    // tag match (medium priority - 1.2x multiplier)
+                    else if tags_lower.iter().any(|t| t.contains(&topic_lc)) {
+                        total_boost += weight * 1.2;
+                        match_count += 1;
+                    }
+                    // content match (base priority - 1.0x multiplier)
+                    else if content_lower.contains(&topic_lc) {
                         total_boost += weight;
                         match_count += 1;
                     }
@@ -451,7 +532,7 @@ impl HybridSearchService {
         });
 
         tracing::info!(
-            "Context applied: {} memories after filtering (exclude: {:?}, boost: {:?})",
+            "Post Re-ranking: {} memories (exclude: {:?}, boost: {:?})",
             result.memories.len(),
             exclude_topics,
             boost_topics.iter().map(|(t, _)| t).collect::<Vec<_>>()
