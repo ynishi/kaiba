@@ -82,6 +82,9 @@ pub struct SearchMemoriesRequest {
     pub query: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub limit: Option<usize>,
+    /// Search strategy (auto, parallel, graph_first, rag_first, multi_hop, single_rag, single_db, single_graph)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strategy: Option<String>,
     /// Context weights for boosting/excluding topics
     #[serde(skip_serializing_if = "HashMap::is_empty")]
     pub context: HashMap<String, f32>,
@@ -479,12 +482,13 @@ impl KaibaClient {
         Ok(prompt)
     }
 
-    /// Search memories with optional context weights
+    /// Search memories with optional context weights and strategy
     pub async fn search_memories(
         &self,
         rei_id: &str,
         query: &str,
         limit: Option<usize>,
+        strategy: Option<&str>,
         context: HashMap<String, f32>,
     ) -> Result<Vec<MemoryResponse>> {
         let url = format!("{}/kaiba/rei/{}/memories/search", self.base_url, rei_id);
@@ -492,6 +496,7 @@ impl KaibaClient {
         let request = SearchMemoriesRequest {
             query: query.to_string(),
             limit,
+            strategy: strategy.map(|s| s.to_string()),
             context,
         };
 

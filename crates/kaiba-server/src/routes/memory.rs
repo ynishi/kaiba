@@ -1,4 +1,6 @@
-//! Memory Routes - Long-term memory storage in MemoryKai (Qdrant)
+//! Memory Routes - Long-term memory storage
+//!
+//! Saves to: MemoryKai (Qdrant) + GraphKai (Neo4j)
 
 use axum::{
     extract::{Path, State},
@@ -8,11 +10,13 @@ use axum::{
 use chrono::Utc;
 use uuid::Uuid;
 
+use kaiba::{EmphasisParser, GraphBuilder, GraphRepository};
+
 use crate::models::{CreateMemoryRequest, Memory, MemoryResponse, SearchMemoriesRequest};
 use crate::services::{HybridSearchConfig, SearchFilter};
 use crate::AppState;
 
-/// Add a memory to MemoryKai
+/// Add a memory to MemoryKai (Qdrant) + GraphKai (Neo4j)
 #[utoipa::path(
     post,
     path = "/kaiba/rei/{rei_id}/memories",
@@ -40,30 +44,124 @@ pub async fn add_memory(
         "Embedding service not available".to_string(),
     ))?;
 
+    let memory_id = Uuid::new_v4();
+
+    // Merge source info into metadata
+    let mut metadata = payload.metadata.unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = metadata.as_object_mut() {
+        obj.insert("source".to_string(), serde_json::json!("memory"));
+        obj.insert("memory_id".to_string(), serde_json::json!(memory_id.to_string()));
+    }
+
     let memory = Memory {
-        id: Uuid::new_v4().to_string(),
+        id: memory_id.to_string(),
         rei_id: rei_id.to_string(),
         content: payload.content.clone(),
         memory_type: payload.memory_type,
         importance: payload.importance.unwrap_or(0.5),
         tags: payload.tags,
         topic_path: None,
-        metadata: payload.metadata,
+        metadata: Some(metadata),
         created_at: Utc::now(),
     };
 
-    // Generate embedding using OpenAI API
+    // 1. Generate embedding using OpenAI API
     let embedding = embedding_service
         .embed(&payload.content)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // 2. Save to MemoryKai (Qdrant) - RAG
     memory_kai
         .add_memory(&rei_id.to_string(), memory.clone(), embedding)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    // 3. Save to GraphKai (Neo4j) - Knowledge Graph
+    if let Some(graph_kai) = &state.graph_kai {
+        if let Err(e) = save_memory_to_graph(
+            graph_kai.as_ref(),
+            rei_id,
+            memory_id,
+            &memory.content,
+        )
+        .await
+        {
+            // Log warning but don't fail the request - RAG save succeeded
+            tracing::warn!("Failed to save memory {} to Graph: {}", memory_id, e);
+        }
+    }
+
     Ok(Json(memory.into()))
+}
+
+/// Save memory content to GraphKai (Neo4j) - builds knowledge graph from emphasis
+async fn save_memory_to_graph(
+    graph_kai: &dyn GraphRepository,
+    rei_id: Uuid,
+    memory_id: Uuid,
+    content: &str,
+) -> Result<usize, String> {
+    let emphasis_parser = EmphasisParser::new();
+    let graph_builder = GraphBuilder::new(Default::default());
+
+    // Parse emphasis from memory content
+    let parse_result = emphasis_parser.parse(memory_id, content);
+
+    if parse_result.nodes.is_empty() {
+        return Ok(0);
+    }
+
+    // Build graph nodes and edges (using memory_id as doc_id)
+    let title = format!("Memory:{}", &memory_id.to_string()[..8]);
+    let build_result = graph_builder.build_from_emphasis(
+        rei_id,
+        memory_id,
+        &title,
+        &parse_result.nodes,
+    );
+
+    let mut nodes_created = 0;
+
+    // Upsert document node (represents the memory)
+    if let Some(doc_node) = &build_result.doc_node {
+        graph_kai
+            .upsert_node(doc_node)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    // Upsert concept nodes
+    if !build_result.nodes.is_empty() {
+        let result = graph_kai
+            .upsert_nodes(&build_result.nodes)
+            .await
+            .map_err(|e| e.to_string())?;
+        nodes_created = result.created + result.updated;
+    }
+
+    // Upsert edges
+    if !build_result.extraction_edges.is_empty() {
+        graph_kai
+            .upsert_edges(&build_result.extraction_edges)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    if !build_result.co_occurrence_edges.is_empty() {
+        graph_kai
+            .upsert_edges(&build_result.co_occurrence_edges)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    tracing::debug!(
+        "Memory {} saved to graph: {} nodes created",
+        memory_id,
+        nodes_created
+    );
+
+    Ok(nodes_created)
 }
 
 /// Search memories in MemoryKai
@@ -89,6 +187,7 @@ pub async fn search_memories(
     // Use HybridSearch if available and context is provided
     if let Some(hybrid_search) = &state.hybrid_search {
         let config = HybridSearchConfig {
+            strategy: payload.strategy.unwrap_or_default(),
             rag_limit: limit,
             context: payload.context.clone(),
             ..Default::default()

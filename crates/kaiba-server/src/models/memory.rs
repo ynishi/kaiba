@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use utoipa::ToSchema;
 
+use crate::services::HybridStrategy;
+
 /// Memory type
 #[derive(Debug, Clone, Serialize, Deserialize, Default, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -86,6 +88,11 @@ pub struct SearchMemoriesRequest {
     pub query: String,
     /// Maximum number of results (default: 10)
     pub limit: Option<usize>,
+    /// Search strategy (default: auto)
+    /// Options: auto, parallel, graph_first, rag_first, multi_hop,
+    ///          single_rag, single_db, single_graph
+    #[serde(default)]
+    pub strategy: Option<HybridStrategy>,
     /// Filter by memory type (AND condition)
     pub memory_type: Option<MemoryType>,
     /// Filter by tags

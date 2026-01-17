@@ -185,6 +185,9 @@ enum MemoryAction {
         /// Show full content (default: 60 char preview)
         #[arg(long)]
         full: bool,
+        /// Search strategy (auto, parallel, graph_first, rag_first, multi_hop, single_rag, single_db, single_graph)
+        #[arg(short, long)]
+        strategy: Option<String>,
         /// Context weights for boosting/excluding topics
         /// Format: "topic:weight,topic2:weight2" (weight=0 to exclude)
         /// Example: "Rust:1.0,Finance:0"
@@ -642,6 +645,7 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             query,
             limit,
             full,
+            strategy,
             context,
             profile,
         } => {
@@ -652,7 +656,7 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             let context_weights = parse_context_string(context.as_deref());
 
             let memories = client
-                .search_memories(&rei_id, &query, Some(limit), context_weights)
+                .search_memories(&rei_id, &query, Some(limit), strategy.as_deref(), context_weights)
                 .await?;
 
             if memories.is_empty() {

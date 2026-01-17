@@ -38,7 +38,8 @@ pub enum HybridSearchError {
 }
 
 /// Search strategy for hybrid queries
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
 pub enum HybridStrategy {
     // === 複合戦略 ===
     /// Graph traversal first, then RAG supplement
