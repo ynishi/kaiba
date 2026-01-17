@@ -47,6 +47,7 @@ pub async fn add_memory(
         memory_type: payload.memory_type,
         importance: payload.importance.unwrap_or(0.5),
         tags: payload.tags,
+        topic_path: None,
         metadata: payload.metadata,
         created_at: Utc::now(),
     };

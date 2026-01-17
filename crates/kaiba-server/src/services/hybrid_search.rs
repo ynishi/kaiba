@@ -376,6 +376,7 @@ impl HybridSearchService {
                     format!("node_type:{}", node.node_type),
                     "source:graph".to_string(),
                 ],
+                topic_path: None,
                 created_at: chrono::Utc::now(),
                 metadata: Some(node.metadata.clone()),
             },

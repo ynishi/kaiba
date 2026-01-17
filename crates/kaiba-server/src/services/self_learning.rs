@@ -219,6 +219,7 @@ impl SelfLearningService {
             memory_type: MemoryType::Learning,
             importance: 0.7, // Self-learned content has moderate importance
             tags: vec!["self_learning".to_string(), "auto_generated".to_string()],
+            topic_path: None,
             metadata: None,
             created_at: chrono::Utc::now(),
         };

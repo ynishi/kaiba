@@ -294,4 +294,41 @@ impl DocRepository for PgDocRepository {
 
         Ok(count as usize)
     }
+
+    async fn search_fulltext(
+        &self,
+        rei_id: Uuid,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Document>, DomainError> {
+        // Use PostgreSQL full-text search with simple configuration
+        // Also use ILIKE as fallback for better matching (especially for non-English)
+        let rows = sqlx::query_as::<_, DocumentRow>(
+            r#"
+            SELECT *
+            FROM documents
+            WHERE rei_id = $1
+              AND (
+                  -- Full-text search (works well for English)
+                  to_tsvector('simple', raw_content) @@ plainto_tsquery('simple', $2)
+                  -- ILIKE fallback (works for all languages including Japanese)
+                  OR raw_content ILIKE '%' || $2 || '%'
+                  OR title ILIKE '%' || $2 || '%'
+              )
+            ORDER BY
+              -- Prioritize full-text matches, then ILIKE matches
+              CASE WHEN to_tsvector('simple', raw_content) @@ plainto_tsquery('simple', $2) THEN 0 ELSE 1 END,
+              updated_at DESC
+            LIMIT $3
+            "#,
+        )
+        .bind(rei_id)
+        .bind(query)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| DomainError::Repository(e.to_string()))?;
+
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
 }

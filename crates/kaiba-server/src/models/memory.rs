@@ -51,6 +51,9 @@ pub struct Memory {
     /// Custom tags for flexible categorization (e.g., ["code_knowledge", "rust", "orcs"])
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Hierarchical category path (e.g., "Rust > Concurrency > Async")
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic_path: Option<String>,
     /// Extensible metadata for project-specific data
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
@@ -111,6 +114,8 @@ pub struct MemoryResponse {
     #[serde(default)]
     pub tags: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub topic_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,
     pub similarity: Option<f32>,
     pub created_at: DateTime<Utc>,
@@ -124,6 +129,7 @@ impl From<Memory> for MemoryResponse {
             memory_type: mem.memory_type,
             importance: mem.importance,
             tags: mem.tags,
+            topic_path: mem.topic_path,
             metadata: mem.metadata,
             similarity: None,
             created_at: mem.created_at,

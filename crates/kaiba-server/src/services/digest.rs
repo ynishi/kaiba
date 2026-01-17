@@ -20,11 +20,78 @@ pub struct DigestResult {
     pub rei_id: Uuid,
     pub memories_processed: usize,
     pub expertise_created: bool,
+    /// Number of expertise entries created
+    pub expertises_count: usize,
     pub summary: String,
     /// Document ID if saved to DocStore
     pub document_id: Option<Uuid>,
     /// Graph nodes created from the expertise
     pub graph_nodes_created: usize,
+}
+
+/// Parsed expertise entry from LLM output
+#[derive(Debug, Clone)]
+struct ParsedExpertise {
+    /// The main content text
+    content: String,
+    /// Optional hierarchical category (e.g., "Rust > Concurrency > Async")
+    topic_path: Option<String>,
+}
+
+/// Parse LLM output into multiple expertise entries
+/// Format: content + optional "topic_path: X > Y > Z" + "=====" separator
+fn parse_expertise_output(raw_output: &str) -> Vec<ParsedExpertise> {
+    let mut expertises = Vec::new();
+
+    // Split by separator
+    for chunk in raw_output.split("=====") {
+        let chunk = chunk.trim();
+        if chunk.is_empty() {
+            continue;
+        }
+
+        // Extract topic_path if present
+        let (content, topic_path) = extract_topic_path(chunk);
+
+        // Skip if content is too short (likely malformed)
+        if content.split_whitespace().count() < 20 {
+            continue;
+        }
+
+        expertises.push(ParsedExpertise {
+            content,
+            topic_path,
+        });
+    }
+
+    expertises
+}
+
+/// Extract topic_path from chunk if present
+/// Returns (content_without_topic_path, Option<topic_path>)
+fn extract_topic_path(chunk: &str) -> (String, Option<String>) {
+    // Look for "topic_path:" line (case insensitive)
+    let lines: Vec<&str> = chunk.lines().collect();
+    let mut content_lines = Vec::new();
+    let mut topic_path = None;
+
+    for line in lines {
+        let trimmed = line.trim();
+        if trimmed.to_lowercase().starts_with("topic_path:") {
+            // Extract the path after the colon
+            let path = trimmed
+                .splitn(2, ':')
+                .nth(1)
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+            topic_path = path;
+        } else {
+            content_lines.push(line);
+        }
+    }
+
+    let content = content_lines.join("\n").trim().to_string();
+    (content, topic_path)
 }
 
 /// Digest service for consolidating memories
@@ -83,60 +150,111 @@ impl DigestService {
                 rei_id,
                 memories_processed: 0,
                 expertise_created: false,
+                expertises_count: 0,
                 summary: "No memories to digest".to_string(),
                 document_id: None,
                 graph_nodes_created: 0,
             });
         }
 
-        // 2. Generate digest summary
-        let summary = self.generate_summary(&memories).await?;
+        // 2. Generate digest output (multiple expertises separated by =====)
+        let raw_output = self.generate_summary(&memories).await?;
 
-        // 3. Store as Expertise memory
-        let memory_id = Uuid::new_v4();
-        let expertise = Memory {
-            id: memory_id.to_string(),
-            rei_id: rei_id.to_string(),
-            content: summary.clone(),
-            memory_type: MemoryType::Expertise,
-            importance: 0.9, // High importance for digested knowledge
-            tags: vec!["digest".to_string(), "auto_generated".to_string()],
-            metadata: None,
-            created_at: chrono::Utc::now(),
-        };
+        // 3. Parse into multiple expertise entries
+        let parsed_expertises = parse_expertise_output(&raw_output);
 
-        let vector = self
-            .embedding
-            .embed(&summary)
+        if parsed_expertises.is_empty() {
+            // Fallback: treat entire output as single expertise
+            tracing::warn!("No expertises parsed from LLM output, using raw output as single entry");
+            let fallback = vec![ParsedExpertise {
+                content: raw_output.clone(),
+                topic_path: None,
+            }];
+            return self
+                .store_expertises(rei_id, &memories, &fallback, &raw_output)
+                .await;
+        }
+
+        // 4. Store each expertise as separate Memory
+        self.store_expertises(rei_id, &memories, &parsed_expertises, &raw_output)
             .await
-            .map_err(|e| DigestError::EmbeddingFailed(e.to_string()))?;
+    }
 
-        self.memory_kai
-            .add_memory(&rei_id.to_string(), expertise, vector)
-            .await
-            .map_err(|e| DigestError::StorageFailed(e.to_string()))?;
+    /// Store multiple expertise entries as separate Memories
+    async fn store_expertises(
+        &self,
+        rei_id: Uuid,
+        source_memories: &[Memory],
+        expertises: &[ParsedExpertise],
+        raw_output: &str,
+    ) -> Result<DigestResult, DigestError> {
+        let mut stored_count = 0;
 
-        // 4. Save as Document for GraphKai integration (if DocStore available)
+        for (i, expertise) in expertises.iter().enumerate() {
+            let memory_id = Uuid::new_v4();
+
+            // Generate embedding for this expertise
+            let vector = self
+                .embedding
+                .embed(&expertise.content)
+                .await
+                .map_err(|e| DigestError::EmbeddingFailed(e.to_string()))?;
+
+            let memory = Memory {
+                id: memory_id.to_string(),
+                rei_id: rei_id.to_string(),
+                content: expertise.content.clone(),
+                memory_type: MemoryType::Expertise,
+                importance: 0.9,
+                tags: vec!["digest".to_string(), "auto_generated".to_string()],
+                topic_path: expertise.topic_path.clone(),
+                metadata: None,
+                created_at: chrono::Utc::now(),
+            };
+
+            match self
+                .memory_kai
+                .add_memory(&rei_id.to_string(), memory, vector)
+                .await
+            {
+                Ok(_) => {
+                    stored_count += 1;
+                    tracing::debug!(
+                        "📝 Stored expertise {}/{}: topic_path={:?}",
+                        i + 1,
+                        expertises.len(),
+                        expertise.topic_path
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to store expertise {}: {}", i + 1, e);
+                }
+            }
+        }
+
+        // 5. Save combined output as Document for GraphKai integration
         let (document_id, graph_nodes_created) = self
-            .save_as_document_and_build_graph(rei_id, &summary)
+            .save_as_document_and_build_graph(rei_id, raw_output)
             .await;
 
-        // 5. Update last_digest_at in state
+        // 6. Update last_digest_at in state
         self.update_digest_timestamp(rei_id).await?;
 
         tracing::info!(
-            "📝 Digest completed for Rei {}: {} memories -> 1 expertise, doc={:?}, graph_nodes={}",
+            "📝 Digest completed for Rei {}: {} memories -> {} expertises, doc={:?}, graph_nodes={}",
             rei_id,
-            memories.len(),
+            source_memories.len(),
+            stored_count,
             document_id,
             graph_nodes_created
         );
 
         Ok(DigestResult {
             rei_id,
-            memories_processed: memories.len(),
-            expertise_created: true,
-            summary,
+            memories_processed: source_memories.len(),
+            expertise_created: stored_count > 0,
+            expertises_count: stored_count,
+            summary: raw_output.to_string(),
             document_id,
             graph_nodes_created,
         })
@@ -315,32 +433,53 @@ impl DigestService {
             .join("\n");
 
         let prompt = format!(
-            r#"You are a knowledge synthesizer. Analyze the following learning memories and create a consolidated summary.
+            r#"You are a knowledge synthesizer. Analyze the following learning memories and create multiple focused expertise entries.
 
-## Output Format Rules (IMPORTANT)
+## Output Format Rules (CRITICAL)
 
-Your output will be automatically converted to a Knowledge Graph. Follow these rules:
+Generate 3-5 separate expertise entries. Each entry should be:
+- Focused on ONE specific topic/concept (400-500 tokens)
+- Self-contained and understandable on its own
+- Written in the same language as the memories
 
-1. **Important concepts and keywords** MUST be wrapped in **bold** (double asterisks)
-   → These become high-weight (1.0) Concept nodes in the knowledge graph
+## Entry Format
+
+Each expertise entry MUST follow this exact format:
+
+```
+[expertise content here - focused on one topic, ~400-500 tokens]
+
+topic_path: Category > Subcategory > Topic
+=====
+```
+
+The separator `=====` MUST appear after each entry (including the last one).
+The `topic_path:` line is optional but recommended for categorization.
+
+## Formatting Rules for Content
+
+1. **Important concepts** MUST be wrapped in **bold** (double asterisks)
+   → These become high-weight nodes in the knowledge graph
 2. Technical terms should be wrapped in `code` (backticks)
-   → These become medium-weight (0.8) nodes
-3. *Supplementary concepts* can be in *italic* (single asterisks)
-   → These become lower-weight (0.7) nodes
+3. *Supplementary concepts* can be in *italic*
 
-Example: **Rust**'s **async/await** runs on the `tokio` runtime, enabling *concurrent processing*.
+## Example Output
+
+**Rust**'s **async/await** was stabilized in version 1.39. The key abstraction is the `Future` trait, which represents a value that may not be available yet. Unlike traditional threading, async in Rust is *zero-cost* - it compiles down to state machines without runtime overhead.
+
+topic_path: Programming > Rust > Concurrency
+=====
+
+The **tokio** runtime is the most popular choice for async Rust applications. It provides a multi-threaded scheduler, I/O primitives, and utilities for building network applications. Key features include `spawn` for task creation and `select!` macro for handling multiple futures.
+
+topic_path: Programming > Rust > Runtime
+=====
 
 ## Learning Memories:
 {}
 
 ## Your Task:
-Create a well-structured Markdown summary (in the same language as the memories) that:
-1. Identifies key themes and insights
-2. Connects related information
-3. Uses **bold** for all important concepts (this is critical for knowledge graph extraction)
-4. Organizes knowledge for easy retrieval
-
-Focus on actionable insights and key facts. Remember: concepts in **bold** will be extracted as knowledge graph nodes."#,
+Create 3-5 focused expertise entries from the memories above. Each entry should cover ONE specific topic deeply rather than covering everything shallowly."#,
             memory_content
         );
 

@@ -700,6 +700,7 @@ mod tests {
             memory_type: crate::models::MemoryType::Learning,
             importance: 0.8,
             tags: vec!["test".to_string()],
+            topic_path: None,
             metadata: None,
             created_at: Utc::now(),
         }

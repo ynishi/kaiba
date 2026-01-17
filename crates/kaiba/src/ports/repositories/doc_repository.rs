@@ -46,6 +46,15 @@ pub trait DocRepository: Send + Sync {
 
     /// Count documents for a Rei
     async fn count_by_rei(&self, rei_id: Uuid) -> Result<usize, DomainError>;
+
+    /// Full-text search on document content
+    /// Returns documents matching the query, ordered by relevance
+    async fn search_fulltext(
+        &self,
+        rei_id: Uuid,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<Document>, DomainError>;
 }
 
 /// Result of saving a single document in a batch operation
