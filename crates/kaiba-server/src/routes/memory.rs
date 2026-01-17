@@ -9,7 +9,7 @@ use chrono::Utc;
 use uuid::Uuid;
 
 use crate::models::{CreateMemoryRequest, Memory, MemoryResponse, SearchMemoriesRequest};
-use crate::services::SearchFilter;
+use crate::services::{HybridSearchConfig, SearchFilter};
 use crate::AppState;
 
 /// Add a memory to MemoryKai
@@ -83,6 +83,35 @@ pub async fn search_memories(
     Path(rei_id): Path<Uuid>,
     Json(payload): Json<SearchMemoriesRequest>,
 ) -> Result<Json<Vec<MemoryResponse>>, (axum::http::StatusCode, String)> {
+    let limit = payload.limit.unwrap_or(10);
+
+    // Use HybridSearch if available and context is provided
+    if let Some(hybrid_search) = &state.hybrid_search {
+        let config = HybridSearchConfig {
+            rag_limit: limit,
+            context: payload.context.clone(),
+            ..Default::default()
+        };
+
+        let result = hybrid_search
+            .search(&rei_id, &payload.query, config)
+            .await
+            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        let responses: Vec<MemoryResponse> = result
+            .memories
+            .into_iter()
+            .map(|scored| {
+                let mut resp = MemoryResponse::from(scored.memory);
+                resp.similarity = Some(scored.score);
+                resp
+            })
+            .collect();
+
+        return Ok(Json(responses));
+    }
+
+    // Fallback to direct MemoryKai search
     let memory_kai = state.memory_kai.as_ref().ok_or((
         axum::http::StatusCode::SERVICE_UNAVAILABLE,
         "MemoryKai not available".to_string(),
@@ -98,8 +127,6 @@ pub async fn search_memories(
         .embed(&payload.query)
         .await
         .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-
-    let limit = payload.limit.unwrap_or(10);
 
     // Build search filter
     let filter = SearchFilter {

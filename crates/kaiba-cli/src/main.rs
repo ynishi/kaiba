@@ -10,6 +10,7 @@ use chrono::{Duration, Utc};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use dialoguer::{Input, Password};
+use std::collections::HashMap;
 use std::fs;
 use uuid::Uuid;
 
@@ -184,6 +185,11 @@ enum MemoryAction {
         /// Show full content (default: 60 char preview)
         #[arg(long)]
         full: bool,
+        /// Context weights for boosting/excluding topics
+        /// Format: "topic:weight,topic2:weight2" (weight=0 to exclude)
+        /// Example: "Rust:1.0,Finance:0"
+        #[arg(short, long)]
+        context: Option<String>,
         /// Profile to use
         #[arg(short, long)]
         profile: Option<String>,
@@ -636,12 +642,18 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             query,
             limit,
             full,
+            context,
             profile,
         } => {
             let rei_id = config.get_rei_id(profile.as_deref())
                 .context("No profile specified and no default profile set. Use -p <profile> or set a default.")?;
 
-            let memories = client.search_memories(&rei_id, &query, Some(limit)).await?;
+            // Parse context string into HashMap
+            let context_weights = parse_context_string(context.as_deref());
+
+            let memories = client
+                .search_memories(&rei_id, &query, Some(limit), context_weights)
+                .await?;
 
             if memories.is_empty() {
                 println!("No memories found for '{}'", query);
@@ -667,21 +679,33 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
 
             for mem in memories {
                 let type_badge = format!("[{}]", mem.memory_type).dimmed();
+                let date_str = mem.created_at.format("%Y-%m-%d").to_string().dimmed();
+                let score_str = mem
+                    .similarity
+                    .map(|s| format!(" ({:.2})", s).dimmed().to_string())
+                    .unwrap_or_default();
+
                 if full {
-                    println!("\n  {} {}", type_badge, "─".repeat(50).dimmed());
+                    println!(
+                        "\n  {} {} {}{} ",
+                        type_badge,
+                        date_str,
+                        score_str,
+                        "─".repeat(40).dimmed()
+                    );
                     println!("  {}", mem.content);
                 } else {
                     let preview = truncate_string(&mem.content, 60);
-                    println!("  {} {}", type_badge, preview);
+                    println!("  {} {} {} {}", type_badge, date_str, score_str, preview);
                 }
             }
 
             if !full {
                 println!(
-                    "\n{}: Use {} for full content, or {} for semantic search",
+                    "\n{}: Use {} for full content, {} for context boost",
                     "Tip".cyan().bold(),
                     "--full".yellow(),
-                    "kaiba prompt --include-memories".yellow()
+                    "--context \"Rust:1.0\"".yellow()
                 );
             }
         }
@@ -741,6 +765,23 @@ fn truncate_string(s: &str, max_chars: usize) -> String {
     } else {
         s.to_string()
     }
+}
+
+/// Parse context string into HashMap
+/// Format: "topic:weight,topic2:weight2" (e.g., "Rust:1.0,Finance:0")
+fn parse_context_string(context: Option<&str>) -> HashMap<String, f32> {
+    let mut map = HashMap::new();
+    if let Some(ctx) = context {
+        for pair in ctx.split(',') {
+            let parts: Vec<&str> = pair.trim().split(':').collect();
+            if parts.len() == 2 {
+                if let Ok(weight) = parts[1].trim().parse::<f32>() {
+                    map.insert(parts[0].trim().to_string(), weight);
+                }
+            }
+        }
+    }
+    map
 }
 
 fn cmd_config() -> Result<()> {

@@ -8,5 +8,5 @@ pub mod self_learning;
 pub mod web_search;
 
 // Re-exports
-pub use hybrid_search::HybridSearchService;
+pub use hybrid_search::{HybridSearchConfig, HybridSearchService};
 pub use qdrant::SearchFilter;

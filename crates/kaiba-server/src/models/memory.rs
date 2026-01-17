@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use utoipa::ToSchema;
 
 /// Memory type
@@ -92,6 +93,12 @@ pub struct SearchMemoriesRequest {
     pub tags_match_mode: TagMatchMode,
     /// Minimum importance score (0.0 - 1.0)
     pub min_importance: Option<f32>,
+    /// Context weights for boosting/excluding topics
+    /// - weight > 0: boost (1.0 = full boost)
+    /// - weight = 0: exclude
+    /// Example: {"Rust": 1.0, "Finance": 0}
+    #[serde(default)]
+    pub context: HashMap<String, f32>,
 }
 
 /// Memory response

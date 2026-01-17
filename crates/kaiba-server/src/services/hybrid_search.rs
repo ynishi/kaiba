@@ -9,6 +9,11 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
+/// Context weight for boosting/excluding topics
+/// - weight > 0: boost (1.0 = full boost)
+/// - weight = 0: exclude
+pub type ContextWeights = HashMap<String, f32>;
+
 use kaiba::{DomainError, GraphNode, GraphRepository};
 
 use crate::adapters::Neo4jGraphRepository;
@@ -64,7 +69,7 @@ pub struct HybridSearchResult {
 }
 
 /// Configuration for a single hybrid search request
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HybridSearchConfig {
     /// Search strategy to use
     pub strategy: HybridStrategy,
@@ -74,16 +79,28 @@ pub struct HybridSearchConfig {
     pub graph_depth: u32,
     /// Minimum similarity for graph nodes
     pub min_similarity: f32,
+    /// Context weights for boosting/excluding topics
+    /// - weight > 0: boost (1.0 = full boost)
+    /// - weight = 0: exclude
+    pub context: ContextWeights,
 }
 
-impl Default for HybridSearchConfig {
-    fn default() -> Self {
+impl HybridSearchConfig {
+    /// Create default config with specified limits
+    pub fn new() -> Self {
         Self {
             strategy: HybridStrategy::Auto,
             rag_limit: 5,
             graph_depth: 2,
             min_similarity: 0.7,
+            context: HashMap::new(),
         }
+    }
+
+    /// Add context weight
+    pub fn with_context(mut self, context: ContextWeights) -> Self {
+        self.context = context;
+        self
     }
 }
 
@@ -121,9 +138,14 @@ impl HybridSearchService {
             other => other,
         };
 
-        tracing::info!("HybridSearch: query='{}', strategy={:?}", query, strategy);
+        tracing::info!(
+            "HybridSearch: query='{}', strategy={:?}, context_keys={:?}",
+            query,
+            strategy,
+            config.context.keys().collect::<Vec<_>>()
+        );
 
-        match strategy {
+        let result = match strategy {
             HybridStrategy::GraphFirst => self.search_graph_first(rei_id, query, &config).await,
             HybridStrategy::RagFirst => self.search_rag_first(rei_id, query, &config).await,
             HybridStrategy::Parallel => self.search_parallel(rei_id, query, &config).await,
@@ -131,7 +153,10 @@ impl HybridSearchService {
                 // Should not reach here, but fallback to parallel
                 self.search_parallel(rei_id, query, &config).await
             }
-        }
+        }?;
+
+        // Apply context weights (boost/exclude)
+        Ok(self.apply_context(result, &config.context))
     }
 
     /// GraphFirst: Search graph, then supplement with RAG
@@ -356,6 +381,82 @@ impl HybridSearchService {
             },
             score: node.weight, // Use node weight as similarity score
         }
+    }
+
+    /// Apply context weights to search results
+    /// - weight > 0: boost score
+    /// - weight = 0: exclude
+    fn apply_context(
+        &self,
+        mut result: HybridSearchResult,
+        context: &ContextWeights,
+    ) -> HybridSearchResult {
+        if context.is_empty() {
+            return result;
+        }
+
+        // Separate exclude topics (weight = 0) and boost topics (weight > 0)
+        let exclude_topics: Vec<&str> = context
+            .iter()
+            .filter(|(_, &w)| w == 0.0)
+            .map(|(k, _)| k.as_str())
+            .collect();
+
+        let boost_topics: Vec<(&str, f32)> = context
+            .iter()
+            .filter(|(_, &w)| w > 0.0)
+            .map(|(k, &w)| (k.as_str(), w))
+            .collect();
+
+        // Filter and boost memories
+        result.memories = result
+            .memories
+            .into_iter()
+            .filter(|scored| {
+                // Exclude if content contains any exclude topic
+                let content_lower = scored.memory.content.to_lowercase();
+                !exclude_topics
+                    .iter()
+                    .any(|topic| content_lower.contains(&topic.to_lowercase()))
+            })
+            .map(|mut scored| {
+                // Boost score based on matching topics
+                let content_lower = scored.memory.content.to_lowercase();
+                let mut total_boost = 0.0;
+                let mut match_count = 0;
+
+                for (topic, weight) in &boost_topics {
+                    if content_lower.contains(&topic.to_lowercase()) {
+                        total_boost += weight;
+                        match_count += 1;
+                    }
+                }
+
+                // Apply boost: multiply score by (1 + average_boost)
+                if match_count > 0 {
+                    let avg_boost = total_boost / match_count as f32;
+                    scored.score *= 1.0 + avg_boost;
+                }
+
+                scored
+            })
+            .collect();
+
+        // Re-sort by score (descending)
+        result.memories.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        tracing::info!(
+            "Context applied: {} memories after filtering (exclude: {:?}, boost: {:?})",
+            result.memories.len(),
+            exclude_topics,
+            boost_topics.iter().map(|(t, _)| t).collect::<Vec<_>>()
+        );
+
+        result
     }
 }
 
