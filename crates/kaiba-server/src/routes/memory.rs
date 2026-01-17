@@ -50,7 +50,10 @@ pub async fn add_memory(
     let mut metadata = payload.metadata.unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = metadata.as_object_mut() {
         obj.insert("source".to_string(), serde_json::json!("memory"));
-        obj.insert("memory_id".to_string(), serde_json::json!(memory_id.to_string()));
+        obj.insert(
+            "memory_id".to_string(),
+            serde_json::json!(memory_id.to_string()),
+        );
     }
 
     let memory = Memory {
@@ -79,13 +82,8 @@ pub async fn add_memory(
 
     // 3. Save to GraphKai (Neo4j) - Knowledge Graph
     if let Some(graph_kai) = &state.graph_kai {
-        if let Err(e) = save_memory_to_graph(
-            graph_kai.as_ref(),
-            rei_id,
-            memory_id,
-            &memory.content,
-        )
-        .await
+        if let Err(e) =
+            save_memory_to_graph(graph_kai.as_ref(), rei_id, memory_id, &memory.content).await
         {
             // Log warning but don't fail the request - RAG save succeeded
             tracing::warn!("Failed to save memory {} to Graph: {}", memory_id, e);
@@ -114,12 +112,8 @@ async fn save_memory_to_graph(
 
     // Build graph nodes and edges (using memory_id as doc_id)
     let title = format!("Memory:{}", &memory_id.to_string()[..8]);
-    let build_result = graph_builder.build_from_emphasis(
-        rei_id,
-        memory_id,
-        &title,
-        &parse_result.nodes,
-    );
+    let build_result =
+        graph_builder.build_from_emphasis(rei_id, memory_id, &title, &parse_result.nodes);
 
     let mut nodes_created = 0;
 

@@ -115,13 +115,7 @@ pub async fn ingest_documents(
             if let (Some(memory_kai), Some(embedding_service)) =
                 (&state.memory_kai, &state.embedding)
             {
-                match save_document_to_rag(
-                    memory_kai,
-                    embedding_service,
-                    rei_id,
-                    &r.document,
-                )
-                .await
+                match save_document_to_rag(memory_kai, embedding_service, rei_id, &r.document).await
                 {
                     Ok(count) => {
                         total_rag_entries += count;

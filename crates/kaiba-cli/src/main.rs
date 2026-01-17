@@ -656,7 +656,13 @@ async fn cmd_memory(action: MemoryAction) -> Result<()> {
             let context_weights = parse_context_string(context.as_deref());
 
             let memories = client
-                .search_memories(&rei_id, &query, Some(limit), strategy.as_deref(), context_weights)
+                .search_memories(
+                    &rei_id,
+                    &query,
+                    Some(limit),
+                    strategy.as_deref(),
+                    context_weights,
+                )
                 .await?;
 
             if memories.is_empty() {

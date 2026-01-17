@@ -38,7 +38,18 @@ pub enum HybridSearchError {
 }
 
 /// Search strategy for hybrid queries
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize, utoipa::ToSchema)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
+    utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum HybridStrategy {
     // === 複合戦略 ===
@@ -403,14 +414,16 @@ impl HybridSearchService {
             config.rag_limit,
         );
 
-        let graph_future = self
-            .graph_kai
-            .find_nodes_by_text(*rei_id, query, None, config.rag_limit);
+        let graph_future =
+            self.graph_kai
+                .find_nodes_by_text(*rei_id, query, None, config.rag_limit);
 
         // DB full-text search (if doc_store is available)
         let db_future = async {
             if let Some(doc_store) = &self.doc_store {
-                doc_store.search_fulltext(*rei_id, query, config.rag_limit).await
+                doc_store
+                    .search_fulltext(*rei_id, query, config.rag_limit)
+                    .await
             } else {
                 Ok(vec![])
             }
@@ -641,14 +654,20 @@ impl HybridSearchService {
             .await
             .map_err(|e| HybridSearchError::RagSearch(e.to_string()))?;
 
-        tracing::info!("MultiHop HOP1: Found {} initial memories", initial_results.len());
+        tracing::info!(
+            "MultiHop HOP1: Found {} initial memories",
+            initial_results.len()
+        );
 
         for (memory, score) in &initial_results {
             rag_sources.push(memory.id.clone());
-            all_memories.insert(memory.id.clone(), ScoredMemory {
-                memory: memory.clone(),
-                score: *score,
-            });
+            all_memories.insert(
+                memory.id.clone(),
+                ScoredMemory {
+                    memory: memory.clone(),
+                    score: *score,
+                },
+            );
         }
 
         // HOP 2: Extract keywords from initial results
@@ -676,7 +695,10 @@ impl HybridSearchService {
 
             for node in &graph_nodes {
                 // Get neighbors for expansion
-                let neighbors = self.graph_kai.get_neighbors(node.id, config.graph_depth).await?;
+                let neighbors = self
+                    .graph_kai
+                    .get_neighbors(node.id, config.graph_depth)
+                    .await?;
                 for neighbor in neighbors {
                     expanded_keywords.insert(neighbor.text.clone());
 
@@ -690,7 +712,10 @@ impl HybridSearchService {
             }
         }
 
-        tracing::info!("MultiHop HOP3: Expanded to {} keywords", expanded_keywords.len());
+        tracing::info!(
+            "MultiHop HOP3: Expanded to {} keywords",
+            expanded_keywords.len()
+        );
 
         // HOP 4: Second RAG search with expanded keywords
         let expanded_query = expanded_keywords
@@ -712,16 +737,22 @@ impl HybridSearchService {
                 .await
                 .map_err(|e| HybridSearchError::RagSearch(e.to_string()))?;
 
-            tracing::info!("MultiHop HOP4: Found {} expanded memories", expanded_results.len());
+            tracing::info!(
+                "MultiHop HOP4: Found {} expanded memories",
+                expanded_results.len()
+            );
 
             for (memory, score) in expanded_results {
                 if !all_memories.contains_key(&memory.id) {
                     rag_sources.push(memory.id.clone());
                     // Slightly lower score for expanded results
-                    all_memories.insert(memory.id.clone(), ScoredMemory {
-                        memory,
-                        score: score * 0.9,
-                    });
+                    all_memories.insert(
+                        memory.id.clone(),
+                        ScoredMemory {
+                            memory,
+                            score: score * 0.9,
+                        },
+                    );
                 }
             }
         }
@@ -748,7 +779,8 @@ impl HybridSearchService {
             }
 
             // Extract first few significant words from content
-            let words: Vec<&str> = memory.content
+            let words: Vec<&str> = memory
+                .content
                 .split_whitespace()
                 .filter(|w| w.len() > 3)
                 .take(5)
@@ -818,8 +850,18 @@ impl HybridSearchService {
             .into_iter()
             .filter(|scored| {
                 // Exclude if topic_path, tags, or content contains any exclude topic
-                let topic_lower = scored.memory.topic_path.as_deref().unwrap_or("").to_lowercase();
-                let tags_lower: Vec<String> = scored.memory.tags.iter().map(|t| t.to_lowercase()).collect();
+                let topic_lower = scored
+                    .memory
+                    .topic_path
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase();
+                let tags_lower: Vec<String> = scored
+                    .memory
+                    .tags
+                    .iter()
+                    .map(|t| t.to_lowercase())
+                    .collect();
                 let content_lower = scored.memory.content.to_lowercase();
 
                 !exclude_topics.iter().any(|topic| {
@@ -832,8 +874,18 @@ impl HybridSearchService {
             .map(|mut scored| {
                 // Boost score based on matching topics
                 // Priority: topic_path (1.5x) > tags (1.2x) > content (1.0x)
-                let topic_lower = scored.memory.topic_path.as_deref().unwrap_or("").to_lowercase();
-                let tags_lower: Vec<String> = scored.memory.tags.iter().map(|t| t.to_lowercase()).collect();
+                let topic_lower = scored
+                    .memory
+                    .topic_path
+                    .as_deref()
+                    .unwrap_or("")
+                    .to_lowercase();
+                let tags_lower: Vec<String> = scored
+                    .memory
+                    .tags
+                    .iter()
+                    .map(|t| t.to_lowercase())
+                    .collect();
                 let content_lower = scored.memory.content.to_lowercase();
 
                 let mut total_boost = 0.0;
