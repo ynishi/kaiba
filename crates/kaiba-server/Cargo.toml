@@ -55,6 +55,9 @@ llm-toolkit = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 
+# Secret management
+secrecy = { workspace = true }
+
 # Async trait
 async-trait = "0.1"
 

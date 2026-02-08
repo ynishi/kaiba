@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use secrecy::{ExposeSecret, Secret};
 
 /// Server configuration loaded from environment variables.
 ///
@@ -6,29 +7,29 @@ use anyhow::{Context, Result};
 /// Optional: All others (services degrade gracefully when missing)
 pub struct Config {
     // Required
-    pub database_url: String,
+    pub database_url: Secret<String>,
     pub port: u16,
 
     // Authentication
-    pub kaiba_api_key: Option<String>,
+    pub kaiba_api_key: Option<Secret<String>>,
 
     // MemoryKai (Qdrant)
     pub qdrant_url: Option<String>,
-    pub qdrant_api_key: Option<String>,
+    pub qdrant_api_key: Option<Secret<String>>,
 
     // Embedding (OpenAI)
-    pub openai_api_key: Option<String>,
+    pub openai_api_key: Option<Secret<String>>,
 
     // WebSearch (Gemini)
-    pub gemini_api_key: Option<String>,
+    pub gemini_api_key: Option<Secret<String>>,
 
     // GraphKai (Neo4j)
     pub neo4j_uri: Option<String>,
     pub neo4j_user: Option<String>,
-    pub neo4j_password: Option<String>,
+    pub neo4j_password: Option<Secret<String>>,
 
     // Decision Engine (Groq)
-    pub groq_api_key: Option<String>,
+    pub groq_api_key: Option<Secret<String>>,
 
     // Scheduler
     pub learning_interval_secs: Option<u64>,
@@ -40,31 +41,41 @@ impl Config {
 
         let database_url = std::env::var("DATABASE_URL").context("DATABASE_URL must be set")?;
 
-        let port = std::env::var("PORT")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(8080);
+        let port = match std::env::var("PORT") {
+            Ok(s) => s.parse().unwrap_or_else(|_| {
+                tracing::warn!("Invalid PORT value '{}', using default 8080", s);
+                8080
+            }),
+            Err(_) => 8080,
+        };
 
         Ok(Self {
-            database_url,
+            database_url: Secret::new(database_url),
             port,
-            kaiba_api_key: opt("KAIBA_API_KEY"),
+            kaiba_api_key: opt_secret("KAIBA_API_KEY"),
             qdrant_url: opt("QDRANT_URL"),
-            qdrant_api_key: opt("QDRANT_API_KEY"),
-            openai_api_key: opt("OPENAI_API_KEY"),
-            gemini_api_key: opt("GEMINI_API_KEY"),
+            qdrant_api_key: opt_secret("QDRANT_API_KEY"),
+            openai_api_key: opt_secret("OPENAI_API_KEY"),
+            gemini_api_key: opt_secret("GEMINI_API_KEY"),
             neo4j_uri: opt("NEO4J_URI"),
             neo4j_user: opt("NEO4J_USER"),
-            neo4j_password: opt("NEO4J_PASSWORD"),
-            groq_api_key: opt("GROQ_API_KEY"),
-            learning_interval_secs: opt("LEARNING_INTERVAL_SECS").and_then(|s| s.parse().ok()),
+            neo4j_password: opt_secret("NEO4J_PASSWORD"),
+            groq_api_key: opt_secret("GROQ_API_KEY"),
+            learning_interval_secs: opt("LEARNING_INTERVAL_SECS").and_then(|s| {
+                s.parse()
+                    .map_err(|_| {
+                        tracing::warn!("Invalid LEARNING_INTERVAL_SECS value '{}', ignoring", s);
+                    })
+                    .ok()
+            }),
         })
     }
 
-    /// Neo4j credentials as a tuple (all three required)
+    /// Neo4j credentials as a tuple (all three required).
+    /// Password is intentionally exposed here for driver initialization.
     pub fn neo4j_credentials(&self) -> Option<(&str, &str, &str)> {
         match (&self.neo4j_uri, &self.neo4j_user, &self.neo4j_password) {
-            (Some(uri), Some(user), Some(pass)) => Some((uri, user, pass)),
+            (Some(uri), Some(user), Some(pass)) => Some((uri, user, pass.expose_secret())),
             _ => None,
         }
     }
@@ -72,4 +83,8 @@ impl Config {
 
 fn opt(key: &str) -> Option<String> {
     std::env::var(key).ok()
+}
+
+fn opt_secret(key: &str) -> Option<Secret<String>> {
+    std::env::var(key).ok().map(Secret::new)
 }

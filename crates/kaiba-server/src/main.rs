@@ -20,6 +20,7 @@ use adapters::{
 };
 use application::{ReiService, TeiService};
 use config::Config;
+use secrecy::ExposeSecret;
 use services::decision::{create_decision_engine, LlmEngineConfig};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
@@ -71,6 +72,8 @@ async fn health_check() -> Json<HealthCheck> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -84,32 +87,35 @@ async fn main() -> anyhow::Result<()> {
 
     // Authentication
     if let Some(ref api_key) = cfg.kaiba_api_key {
-        auth::init_api_key(api_key.clone());
+        auth::init_api_key(api_key.expose_secret().clone());
         tracing::info!("API key authentication enabled");
     } else {
         tracing::warn!("No KAIBA_API_KEY set - authentication disabled");
     }
 
     // PostgreSQL
-    let pool = PgPool::connect(&cfg.database_url).await?;
+    let pool = PgPool::connect(cfg.database_url.expose_secret()).await?;
     sqlx::migrate!()
         .run(&pool)
         .await
-        .expect("Failed to run database migrations");
+        .map_err(|e| anyhow::anyhow!("Failed to run database migrations: {}", e))?;
     tracing::info!("Database migrations completed");
 
     // MemoryKai (Qdrant)
     let memory_kai = match (&cfg.qdrant_url, &cfg.qdrant_api_key) {
-        (Some(url), api_key) => match MemoryKai::new(url, api_key.clone()).await {
-            Ok(kai) => {
-                tracing::info!("MemoryKai connected");
-                Some(Arc::new(kai))
+        (Some(url), api_key) => {
+            let key = api_key.as_ref().map(|s| s.expose_secret().clone());
+            match MemoryKai::new(url, key).await {
+                Ok(kai) => {
+                    tracing::info!("MemoryKai connected");
+                    Some(Arc::new(kai))
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to connect to MemoryKai: {}", e);
+                    None
+                }
             }
-            Err(e) => {
-                tracing::warn!("Failed to connect to MemoryKai: {}", e);
-                None
-            }
-        },
+        }
         _ => {
             tracing::warn!("No QDRANT_URL set - MemoryKai disabled");
             None
@@ -119,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
     // Embedding (OpenAI)
     let embedding = cfg.openai_api_key.as_ref().map(|key| {
         tracing::info!("Embedding service initialized");
-        EmbeddingService::new(key.clone())
+        EmbeddingService::new(key.expose_secret().clone())
     });
     if embedding.is_none() {
         tracing::warn!("No OPENAI_API_KEY set - Embedding disabled");
@@ -128,7 +134,7 @@ async fn main() -> anyhow::Result<()> {
     // WebSearch (Gemini)
     let web_search = cfg.gemini_api_key.as_ref().map(|key| {
         tracing::info!("WebSearch agent initialized (Gemini)");
-        WebSearchAgent::new(key.clone())
+        WebSearchAgent::new(key.expose_secret().clone())
     });
     if web_search.is_none() {
         tracing::warn!("No GEMINI_API_KEY set - WebSearch disabled");
@@ -156,7 +162,7 @@ async fn main() -> anyhow::Result<()> {
     let decision_engine = match &cfg.groq_api_key {
         Some(api_key) => {
             tracing::info!("Decision engine: LLM (Groq llama-3.2-3b-preview)");
-            let config = LlmEngineConfig::groq(api_key, "llama-3.2-3b-preview");
+            let config = LlmEngineConfig::groq(api_key.expose_secret(), "llama-3.2-3b-preview");
             Arc::from(create_decision_engine(Some(config)))
         }
         None => {
@@ -220,7 +226,9 @@ async fn main() -> anyhow::Result<()> {
         memory_kai,
         embedding,
         web_search,
-        cfg.gemini_api_key,
+        cfg.gemini_api_key
+            .as_ref()
+            .map(|s| s.expose_secret().clone()),
         cfg.learning_interval_secs,
         decision_engine,
         Some(state.webhook_repo.clone()),
