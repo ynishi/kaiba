@@ -9,6 +9,7 @@ use utoipa_swagger_ui::SwaggerUi;
 mod adapters;
 mod application;
 mod auth;
+mod config;
 mod models;
 mod routes;
 mod services;
@@ -18,6 +19,7 @@ use adapters::{
     PgTeiRepository,
 };
 use application::{ReiService, TeiService};
+use config::Config;
 use services::decision::{create_decision_engine, LlmEngineConfig};
 use services::embedding::EmbeddingService;
 use services::qdrant::MemoryKai;
@@ -67,105 +69,103 @@ async fn health_check() -> Json<HealthCheck> {
     })
 }
 
-#[shuttle_runtime::main]
-async fn main(
-    #[shuttle_shared_db::Postgres] pool: PgPool,
-    #[shuttle_runtime::Secrets] secrets: shuttle_runtime::SecretStore,
-) -> shuttle_axum::ShuttleAxum {
-    tracing::info!("🧠 Kaiba API initializing...");
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "kaiba_server=info,tower_http=info".into()),
+        )
+        .init();
 
-    // Initialize API key from secrets
-    if let Some(api_key) = secrets.get("KAIBA_API_KEY") {
-        auth::init_api_key(api_key);
-        tracing::info!("🔐 API key authentication enabled");
+    let cfg = Config::from_env()?;
+
+    tracing::info!("Kaiba API initializing...");
+
+    // Authentication
+    if let Some(ref api_key) = cfg.kaiba_api_key {
+        auth::init_api_key(api_key.clone());
+        tracing::info!("API key authentication enabled");
     } else {
-        tracing::warn!("⚠️  No KAIBA_API_KEY set - authentication disabled");
+        tracing::warn!("No KAIBA_API_KEY set - authentication disabled");
     }
 
-    // Run migrations
+    // PostgreSQL
+    let pool = PgPool::connect(&cfg.database_url).await?;
     sqlx::migrate!()
         .run(&pool)
         .await
         .expect("Failed to run database migrations");
+    tracing::info!("Database migrations completed");
 
-    tracing::info!("✅ Database migrations completed");
-
-    // Initialize MemoryKai (Qdrant) if configured
-    let memory_kai = match (secrets.get("QDRANT_URL"), secrets.get("QDRANT_API_KEY")) {
-        (Some(url), api_key) => match MemoryKai::new(&url, api_key).await {
+    // MemoryKai (Qdrant)
+    let memory_kai = match (&cfg.qdrant_url, &cfg.qdrant_api_key) {
+        (Some(url), api_key) => match MemoryKai::new(url, api_key.clone()).await {
             Ok(kai) => {
-                tracing::info!("🌊 MemoryKai (記憶海) connected");
+                tracing::info!("MemoryKai connected");
                 Some(Arc::new(kai))
             }
             Err(e) => {
-                tracing::warn!("⚠️  Failed to connect to MemoryKai: {}", e);
+                tracing::warn!("Failed to connect to MemoryKai: {}", e);
                 None
             }
         },
         _ => {
-            tracing::warn!("⚠️  No QDRANT_URL set - MemoryKai disabled");
+            tracing::warn!("No QDRANT_URL set - MemoryKai disabled");
             None
         }
     };
 
-    // Initialize Embedding service if configured
-    let embedding = secrets.get("OPENAI_API_KEY").map(|key| {
-        tracing::info!("🧬 Embedding service initialized");
-        EmbeddingService::new(key)
+    // Embedding (OpenAI)
+    let embedding = cfg.openai_api_key.as_ref().map(|key| {
+        tracing::info!("Embedding service initialized");
+        EmbeddingService::new(key.clone())
     });
-
     if embedding.is_none() {
-        tracing::warn!("⚠️  No OPENAI_API_KEY set - Embedding disabled");
+        tracing::warn!("No OPENAI_API_KEY set - Embedding disabled");
     }
 
-    // Initialize WebSearch agent if configured
-    let web_search = secrets.get("GEMINI_API_KEY").map(|key| {
-        tracing::info!("🔍 WebSearch agent initialized (Gemini)");
-        WebSearchAgent::new(key)
+    // WebSearch (Gemini)
+    let web_search = cfg.gemini_api_key.as_ref().map(|key| {
+        tracing::info!("WebSearch agent initialized (Gemini)");
+        WebSearchAgent::new(key.clone())
     });
-
     if web_search.is_none() {
-        tracing::warn!("⚠️  No GEMINI_API_KEY set - WebSearch disabled");
+        tracing::warn!("No GEMINI_API_KEY set - WebSearch disabled");
     }
 
-    // Initialize GraphKai (Neo4j) if configured
-    let graph_kai = match (
-        secrets.get("NEO4J_URI"),
-        secrets.get("NEO4J_USER"),
-        secrets.get("NEO4J_PASSWORD"),
-    ) {
-        (Some(uri), Some(user), Some(password)) => {
-            match Neo4jGraphRepository::new(&uri, &user, &password).await {
-                Ok(repo) => {
-                    tracing::info!("🕸️  GraphKai (知識網) connected to Neo4j");
-                    Some(Arc::new(repo))
-                }
-                Err(e) => {
-                    tracing::warn!("⚠️  Failed to connect to GraphKai: {}", e);
-                    None
-                }
+    // GraphKai (Neo4j)
+    let graph_kai = match cfg.neo4j_credentials() {
+        Some((uri, user, password)) => match Neo4jGraphRepository::new(uri, user, password).await {
+            Ok(repo) => {
+                tracing::info!("GraphKai connected to Neo4j");
+                Some(Arc::new(repo))
             }
-        }
-        _ => {
-            tracing::warn!("⚠️  No NEO4J_* credentials set - GraphKai disabled");
+            Err(e) => {
+                tracing::warn!("Failed to connect to GraphKai: {}", e);
+                None
+            }
+        },
+        None => {
+            tracing::warn!("No NEO4J_* credentials set - GraphKai disabled");
             None
         }
     };
 
-    // Initialize Decision Engine (LLM-based if GROQ_API_KEY is set, otherwise rule-based)
-    let decision_engine = match secrets.get("GROQ_API_KEY") {
+    // Decision Engine
+    let decision_engine = match &cfg.groq_api_key {
         Some(api_key) => {
-            tracing::info!("🤖 Decision engine: LLM (Groq llama-3.2-3b-preview)");
-            let config = LlmEngineConfig::groq(&api_key, "llama-3.2-3b-preview");
+            tracing::info!("Decision engine: LLM (Groq llama-3.2-3b-preview)");
+            let config = LlmEngineConfig::groq(api_key, "llama-3.2-3b-preview");
             Arc::from(create_decision_engine(Some(config)))
         }
         None => {
-            tracing::info!("🤖 Decision engine: Rule-based (no GROQ_API_KEY)");
+            tracing::info!("Decision engine: Rule-based (no GROQ_API_KEY)");
             Arc::from(create_decision_engine(None))
         }
     };
 
-    // Initialize application services
+    // Application services
     let rei_repo = Arc::new(PgReiRepository::new(pool.clone()));
     let tei_repo = Arc::new(PgTeiRepository::new(pool.clone()));
     let webhook_repo = Arc::new(PgReiWebhookRepository::new(pool.clone()));
@@ -174,13 +174,10 @@ async fn main(
     let tei_service = Arc::new(TeiService::new(tei_repo));
     let http_webhook = Arc::new(HttpWebhook::new());
 
-    tracing::info!("📄 DocStore (GraphKai Source of Truth) initialized");
-    tracing::info!("🔔 Webhook service initialized");
-
-    // Initialize HybridSearchService if all required services are available
+    // HybridSearchService
     let hybrid_search = match (&memory_kai, &graph_kai, &embedding) {
         (Some(mem), Some(graph), Some(emb)) => {
-            tracing::info!("🔀 HybridSearchService initialized (RAG + Graph + DB)");
+            tracing::info!("HybridSearchService initialized (RAG + Graph + DB)");
             Some(Arc::new(HybridSearchService::new(
                 mem.clone(),
                 graph.clone(),
@@ -189,12 +186,11 @@ async fn main(
             )))
         }
         _ => {
-            tracing::warn!("⚠️  HybridSearchService disabled (missing required services)");
+            tracing::warn!("HybridSearchService disabled (missing required services)");
             None
         }
     };
 
-    // Create application state
     let state = AppState {
         pool: pool.clone(),
         rei_service,
@@ -209,13 +205,7 @@ async fn main(
         http_webhook,
     };
 
-    // Start autonomous scheduler (1 hour interval)
-    let scheduler_interval = secrets
-        .get("LEARNING_INTERVAL_SECS")
-        .and_then(|s| s.parse().ok());
-    let gemini_api_key = secrets.get("GEMINI_API_KEY");
-
-    // Convert concrete types to trait objects for scheduler
+    // Autonomous scheduler
     let doc_store_dyn: Option<Arc<dyn kaiba::DocRepository>> = state
         .doc_store
         .clone()
@@ -230,20 +220,20 @@ async fn main(
         memory_kai,
         embedding,
         web_search,
-        gemini_api_key,
-        scheduler_interval,
+        cfg.gemini_api_key,
+        cfg.learning_interval_secs,
         decision_engine,
         Some(state.webhook_repo.clone()),
         Some(state.http_webhook.clone()),
         doc_store_dyn,
         graph_kai_dyn,
     ) {
-        tracing::info!("📅 Autonomous scheduler started (with GraphKai integration)");
+        tracing::info!("Autonomous scheduler started");
     } else {
-        tracing::warn!("⚠️  Autonomous scheduler disabled (missing services)");
+        tracing::warn!("Autonomous scheduler disabled (missing services)");
     }
 
-    // Protected routes (require authentication)
+    // Routes
     let protected_routes = Router::new()
         .merge(routes::rei::router())
         .merge(routes::tei::router())
@@ -259,10 +249,8 @@ async fn main(
         .merge(routes::trigger::router())
         .layer(middleware::from_fn(auth::auth_middleware));
 
-    // OpenAPI documentation
     let openapi = routes::swagger::ApiDoc::openapi();
 
-    // Build router with shared state
     let router = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi))
         .route("/health", get(health_check))
@@ -270,8 +258,10 @@ async fn main(
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    tracing::info!("📚 Swagger UI: /swagger-ui");
-    tracing::info!("✅ Kaiba API ready - Rei awakens in Tei");
-
-    Ok(router.into())
+    // Start server
+    let addr = format!("0.0.0.0:{}", cfg.port);
+    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    tracing::info!("Kaiba API ready - listening on {}", addr);
+    axum::serve(listener, router).await?;
+    Ok(())
 }

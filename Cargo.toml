@@ -17,11 +17,6 @@ homepage = "https://github.com/ynishi/kaiba"
 documentation = "https://docs.rs/kaiba"
 
 [workspace.dependencies]
-# Shuttle
-shuttle-runtime = "0.50.0"
-shuttle-axum = "0.50.0"
-shuttle-shared-db = { version = "0.50.0", features = ["postgres", "sqlx"] }
-
 # Web framework
 axum = "0.7.7"
 tower = "0.5.1"
@@ -41,7 +36,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Qdrant vector database
 qdrant-client = "1.11"
 
-# Database (Shuttle Postgres)
+# Database
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono"] }
 
 # Environment
