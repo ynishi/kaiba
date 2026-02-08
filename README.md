@@ -28,8 +28,8 @@
 
 ```
 ┌─────────────────┐
-│  Shuttle Rust   │  Kaiba API (Axum)
-│     Backend     │
+│  Axum Server    │  Kaiba API (standalone)
+│  (tokio)        │
 └────────┬────────┘
          │
          ├─────► MemoryKai (Qdrant) - Vector Search / RAG
@@ -43,7 +43,7 @@
          ├─────► DocStore (Postgres) - Source of Truth
          │        - Documents, metadata
          │
-         └─────► Shuttle Postgres (State)
+         └─────► PostgreSQL (State)
                   - Rei (personas)
                   - ReiState (energy, mood)
 ```
@@ -61,18 +61,18 @@
 ```
 kaiba/
 ├── crates/
-│   └── kaiba/              # Main Shuttle API
-│       ├── src/
-│       │   ├── main.rs
-│       │   ├── models/     # Persona, Memory, State
-│       │   ├── routes/     # API endpoints
-│       │   └── services/   # Qdrant integration
-│       ├── Cargo.toml
-│       └── Shuttle.toml
+│   ├── kaiba/              # Domain library
+│   ├── kaiba-server/       # Axum API server
+│   │   └── src/
+│   │       ├── main.rs
+│   │       ├── config.rs   # Environment-based configuration
+│   │       ├── adapters/   # Infrastructure adapters (Postgres, Neo4j)
+│   │       ├── models/     # Persona, Memory, State
+│   │       ├── routes/     # API endpoints
+│   │       └── services/   # Qdrant, Embedding, Search
+│   └── kaiba-cli/          # CLI client
 ├── docs/
 │   └── design/             # Design documents
-│       ├── concept.md      # Original concept
-│       └── rei-design.md   # Detailed design
 └── Cargo.toml              # Workspace config
 ```
 
@@ -154,8 +154,26 @@ Content-Type: application/json
 ### Prerequisites
 
 - Rust 1.75+ (via rustup)
-- Shuttle CLI: `cargo install cargo-shuttle`
+- PostgreSQL
 - Qdrant Cloud account (free tier available)
+
+### Environment Variables
+
+| Variable | Required | Description |
+|:---------|:---------|:------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `PORT` | No | Server port (default: 8080) |
+| `KAIBA_API_KEY` | No | API key for authentication |
+| `QDRANT_URL` | No | Qdrant server URL |
+| `QDRANT_API_KEY` | No | Qdrant API key |
+| `OPENAI_API_KEY` | No | OpenAI API key (embedding) |
+| `GEMINI_API_KEY` | No | Gemini API key (web search) |
+| `NEO4J_URI` | No | Neo4j connection URI |
+| `NEO4J_USER` | No | Neo4j username |
+| `NEO4J_PASSWORD` | No | Neo4j password |
+| `GROQ_API_KEY` | No | Groq API key (decision engine) |
+
+All optional services degrade gracefully when their credentials are missing.
 
 ### Local Development
 
@@ -170,33 +188,27 @@ Content-Type: application/json
    cargo build
    ```
 
-3. **Configure Qdrant**
-   - Create a free Qdrant Cloud cluster at https://cloud.qdrant.io
-   - Get your API URL and API Key
-
-4. **Set Shuttle secrets** (for deployment)
+3. **Configure environment**
    ```bash
-   cd crates/kaiba
-   shuttle secrets add QDRANT_URL="https://your-qdrant-url"
-   shuttle secrets add QDRANT_API_KEY="your-api-key"
+   cp .env.example .env
+   # Edit .env with your credentials
    ```
 
-5. **Run locally**
+4. **Run locally**
    ```bash
-   cd crates/kaiba
-   shuttle run
+   cargo run --package kaiba-server
    ```
 
-   API will be available at `http://localhost:8000`
+   API will be available at `http://localhost:8080`
 
 ### Deployment
 
-```bash
-cd crates/kaiba
-shuttle deploy
-```
+The server runs as a standalone binary. Deploy to any platform that supports Docker or native binaries (GCP Cloud Run, Fly.io, etc.).
 
-Your API will be live at `https://kaiba.shuttleapp.rs` (or your custom domain)
+```bash
+cargo build --release --package kaiba-server
+./target/release/kaiba-server
+```
 
 ## Development
 
@@ -329,18 +341,13 @@ Kaiba uses a pluggable decision engine for autonomous actions:
 | **Rule-Based** | Fast, deterministic (default if no GROQ_API_KEY) |
 | **LLM (Groq)** | Llama 3.2 3B for personality-aware decisions |
 
-Set `GROQ_API_KEY` in Secrets.toml to enable LLM-based decisions with Rei's persona.
-
-```bash
-# Deploy with secrets
-cargo shuttle deploy --secrets Secrets.toml
-```
+Set `GROQ_API_KEY` environment variable to enable LLM-based decisions with Rei's persona.
 
 ## Roadmap
 
-- [x] Basic API structure (Axum + Shuttle)
+- [x] Basic API structure (Axum)
 - [x] Qdrant integration (MemoryKai)
-- [x] Shuttle Postgres integration
+- [x] PostgreSQL integration
 - [x] Authentication (API Key)
 - [x] RAG integration for LLM calls
 - [x] WebSearch (Gemini grounded search)
@@ -352,6 +359,7 @@ cargo shuttle deploy --secrets Secrets.toml
 - [x] Triple-Store architecture (DocStore + MemoryKai + GraphKai)
 - [x] Hybrid Search (8 strategies including MultiHop)
 - [x] LLM Decision Engine (Groq/Ollama)
+- [x] GCP Cloud Run migration (standalone server)
 - [ ] Web UI (optional, later)
 
 ## Contributing
@@ -365,4 +373,4 @@ MIT
 ---
 
 **Built with**
-🦀 Rust | 🚀 Shuttle | 🌊 Qdrant | 🕸️ Neo4j | 🤖 Groq | 🧠 Kaiba
+🦀 Rust | 🌊 Qdrant | 🕸️ Neo4j | 🤖 Groq | 🧠 Kaiba
