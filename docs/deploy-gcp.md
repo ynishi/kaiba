@@ -67,6 +67,10 @@ Mixing plain env vars and secrets can cause type-conflict errors on Cloud Run.
 | `NEO4J_USER` | `neo4j-user` | No | Neo4j user |
 | `NEO4J_PASSWORD` | `neo4j-password` | No | Neo4j authentication |
 | `GROQ_API_KEY` | `groq-api-key` | No | Groq Decision Engine |
+| `OLLAMA_URL` | `ollama-url` | No | Ollama endpoint (local LLM fallback) |
+| `OLLAMA_MODEL` | `ollama-model` | No | Ollama model name |
+| `DECISION_PERSONA` | `decision-persona` | No | Persona context for Decision Engine |
+| `LEARNING_INTERVAL_SECS` | `learning-interval-secs` | No | Auto-learning scheduler interval (seconds) |
 
 `PORT` is set automatically by Cloud Run (default 8080) — no Secret Manager entry needed.
 
