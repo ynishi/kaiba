@@ -340,11 +340,14 @@ pub struct GraphExportMetadata {
 }
 
 impl KaibaClient {
-    /// Create a new API client
+    /// Create a new API client.
+    /// Logs the target base URL to stderr so the user knows which server is being contacted.
     pub fn new(base_url: &str, api_key: &str) -> Self {
+        let base_url = base_url.trim_end_matches('/').to_string();
+        eprintln!("[kaiba] target: {}", base_url);
         Self {
             client: Client::new(),
-            base_url: base_url.trim_end_matches('/').to_string(),
+            base_url,
             api_key: api_key.to_string(),
         }
     }

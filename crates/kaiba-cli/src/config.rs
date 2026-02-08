@@ -33,8 +33,10 @@ pub struct Config {
     pub profiles: HashMap<String, Profile>,
 }
 
+/// Default base URL for local development.
+/// Override with `base_url` in config.toml or set via `kaiba config set base_url <url>`.
 fn default_base_url() -> String {
-    "https://kaiba-zlje.shuttle.app".to_string()
+    "http://localhost:8080".to_string()
 }
 
 impl Default for Config {

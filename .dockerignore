@@ -1,0 +1,16 @@
+target/
+.git/
+.github/
+.claude/
+.shuttle/
+docs/
+examples/
+*.md
+.env
+.env.*
+Secrets.toml
+**/Secrets.toml
+.DS_Store
+.vscode/
+.idea/
+docker-compose*.yml
