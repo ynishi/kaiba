@@ -1,0 +1,19 @@
+# Cloud Build ignore (overrides .gitignore)
+# Cargo.lock is needed for reproducible builds
+
+target/
+.git/
+.github/
+.claude/
+.shuttle/
+docs/
+examples/
+*.md
+.env
+.env.*
+Secrets.toml
+**/Secrets.toml
+.DS_Store
+.vscode/
+.idea/
+node_modules/
