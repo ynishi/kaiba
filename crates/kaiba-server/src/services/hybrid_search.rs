@@ -200,6 +200,79 @@ impl HybridSearchService {
         }
     }
 
+    /// Perform hybrid search with multiple strategies, merge and deduplicate results.
+    ///
+    /// Each strategy runs sequentially (true parallelism requires `Arc<Self>` + spawn;
+    /// individual strategies already use internal concurrency via `tokio::join!`).
+    pub async fn search_with_strategies(
+        &self,
+        rei_id: &Uuid,
+        query: &str,
+        strategy_set: &StrategySet,
+        base_config: HybridSearchConfig,
+    ) -> Result<HybridSearchResult, HybridSearchError> {
+        if strategy_set.is_empty() {
+            return self.search(rei_id, query, base_config).await;
+        }
+
+        let strategies: Vec<HybridStrategy> = strategy_set.strategies.iter().copied().collect();
+        if strategies.len() == 1 {
+            let mut config = base_config;
+            config.strategy = strategies[0];
+            return self.search(rei_id, query, config).await;
+        }
+
+        tracing::info!(
+            "StrategySet: running {} strategies: {:?}",
+            strategies.len(),
+            strategies
+        );
+
+        let mut merged_memories: HashMap<String, ScoredMemory> = HashMap::new();
+        let mut all_rag_sources = Vec::new();
+        let mut all_graph_sources = Vec::new();
+        let mut all_db_sources = Vec::new();
+
+        for &strategy in &strategies {
+            let mut config = base_config.clone();
+            config.strategy = strategy;
+            if strategy == HybridStrategy::MultiHop {
+                config.graph_depth = strategy_set.hop_depth;
+            }
+
+            let result = self.search(rei_id, query, config).await?;
+            all_rag_sources.extend(result.rag_sources);
+            all_graph_sources.extend(result.graph_sources);
+            all_db_sources.extend(result.db_sources);
+
+            for scored in result.memories {
+                let id = scored.memory.id.clone();
+                match merged_memories.get(&id) {
+                    Some(existing) if existing.score >= scored.score => {}
+                    _ => {
+                        merged_memories.insert(id, scored);
+                    }
+                }
+            }
+        }
+
+        let mut memories: Vec<ScoredMemory> = merged_memories.into_values().collect();
+        memories.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        memories.truncate(base_config.rag_limit);
+
+        Ok(HybridSearchResult {
+            memories,
+            rag_sources: all_rag_sources,
+            graph_sources: all_graph_sources,
+            db_sources: all_db_sources,
+            strategy_used: HybridStrategy::Parallel,
+        })
+    }
+
     /// Perform hybrid search
     pub async fn search(
         &self,

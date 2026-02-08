@@ -160,8 +160,9 @@ impl AutonomousScheduler {
         let decision = self.decision_engine.decide(&state, memories_count).await;
 
         tracing::info!(
-            "🧠 {} decides: {} ({})",
+            "🧠 {} [{}] decides: {} ({})",
             rei.name,
+            self.decision_engine.name(),
             decision.action,
             decision.reason
         );

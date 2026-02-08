@@ -93,6 +93,10 @@ pub struct SearchMemoriesRequest {
     ///          single_rag, single_db, single_graph
     #[serde(default)]
     pub strategy: Option<HybridStrategy>,
+    /// Multiple strategies to run and merge (overrides `strategy` when non-empty)
+    /// Example: ["single_rag", "single_db"] runs RAG + DB and merges results
+    #[serde(default)]
+    pub strategies: Vec<HybridStrategy>,
     /// Filter by memory type (AND condition)
     pub memory_type: Option<MemoryType>,
     /// Filter by tags
@@ -106,6 +110,7 @@ pub struct SearchMemoriesRequest {
     /// Context weights for boosting/excluding topics
     /// - weight > 0: boost (1.0 = full boost)
     /// - weight = 0: exclude
+    ///
     /// Example: {"Rust": 1.0, "Finance": 0}
     #[serde(default)]
     pub context: HashMap<String, f32>,

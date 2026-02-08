@@ -577,6 +577,9 @@ pub enum DigestError {
     NoApiKey,
     SearchFailed(String),
     EmbeddingFailed(String),
+    // Currently storage errors are handled leniently (warn + continue).
+    // Reserved for future strict mode where partial failures should propagate.
+    #[allow(dead_code)]
     StorageFailed(String),
     ApiError(String),
     ParseError(String),

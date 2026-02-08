@@ -13,7 +13,7 @@ use uuid::Uuid;
 use kaiba::{EmphasisParser, GraphBuilder, GraphRepository};
 
 use crate::models::{CreateMemoryRequest, Memory, MemoryResponse, SearchMemoriesRequest};
-use crate::services::{HybridSearchConfig, SearchFilter};
+use crate::services::{HybridSearchConfig, SearchFilter, StrategySet};
 use crate::AppState;
 
 /// Add a memory to MemoryKai (Qdrant) + GraphKai (Neo4j)
@@ -178,7 +178,7 @@ pub async fn search_memories(
 ) -> Result<Json<Vec<MemoryResponse>>, (axum::http::StatusCode, String)> {
     let limit = payload.limit.unwrap_or(10);
 
-    // Use HybridSearch if available and context is provided
+    // Use HybridSearch if available
     if let Some(hybrid_search) = &state.hybrid_search {
         let config = HybridSearchConfig {
             strategy: payload.strategy.unwrap_or_default(),
@@ -187,10 +187,16 @@ pub async fn search_memories(
             ..Default::default()
         };
 
-        let result = hybrid_search
-            .search(&rei_id, &payload.query, config)
-            .await
-            .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        // Multi-strategy mode: run multiple strategies and merge results
+        let result = if !payload.strategies.is_empty() {
+            let strategy_set = StrategySet::multiple(payload.strategies.iter().copied());
+            hybrid_search
+                .search_with_strategies(&rei_id, &payload.query, &strategy_set, config)
+                .await
+        } else {
+            hybrid_search.search(&rei_id, &payload.query, config).await
+        }
+        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
         let responses: Vec<MemoryResponse> = result
             .memories

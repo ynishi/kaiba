@@ -158,17 +158,24 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    // Decision Engine
-    let decision_engine = match &cfg.groq_api_key {
-        Some(api_key) => {
-            tracing::info!("Decision engine: LLM (Groq llama-3.2-3b-preview)");
-            let config = LlmEngineConfig::groq(api_key.expose_secret(), "llama-3.2-3b-preview");
-            Arc::from(create_decision_engine(Some(config)))
+    // Decision Engine: Groq > Ollama > RuleBased
+    let decision_engine = if let Some(api_key) = &cfg.groq_api_key {
+        let mut config = LlmEngineConfig::groq(api_key.expose_secret(), "llama-3.2-3b-preview");
+        if let Some(persona) = &cfg.decision_persona {
+            config = config.with_persona(persona);
         }
-        None => {
-            tracing::info!("Decision engine: Rule-based (no GROQ_API_KEY)");
-            Arc::from(create_decision_engine(None))
+        Arc::from(create_decision_engine(Some(config)))
+    } else if let Some(model) = &cfg.ollama_model {
+        let mut config = LlmEngineConfig::ollama(model);
+        if let Some(url) = &cfg.ollama_url {
+            config.base_url = url.clone();
         }
+        if let Some(persona) = &cfg.decision_persona {
+            config = config.with_persona(persona);
+        }
+        Arc::from(create_decision_engine(Some(config)))
+    } else {
+        Arc::from(create_decision_engine(None))
     };
 
     // Application services

@@ -31,6 +31,13 @@ pub struct Config {
     // Decision Engine (Groq)
     pub groq_api_key: Option<Secret<String>>,
 
+    // Decision Engine (Ollama) - local LLM fallback
+    pub ollama_url: Option<String>,
+    pub ollama_model: Option<String>,
+
+    // Decision Engine - persona for LLM context
+    pub decision_persona: Option<String>,
+
     // Scheduler
     pub learning_interval_secs: Option<u64>,
 }
@@ -61,6 +68,9 @@ impl Config {
             neo4j_user: opt("NEO4J_USER"),
             neo4j_password: opt_secret("NEO4J_PASSWORD"),
             groq_api_key: opt_secret("GROQ_API_KEY"),
+            ollama_url: opt("OLLAMA_URL"),
+            ollama_model: opt("OLLAMA_MODEL"),
+            decision_persona: opt("DECISION_PERSONA"),
             learning_interval_secs: opt("LEARNING_INTERVAL_SECS").and_then(|s| {
                 s.parse()
                     .map_err(|_| {

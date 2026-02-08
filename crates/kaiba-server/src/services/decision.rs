@@ -381,20 +381,20 @@ impl DecisionEngine for LlmEngine {
 
 /// Create decision engine based on configuration
 pub fn create_decision_engine(llm_config: Option<LlmEngineConfig>) -> Box<dyn DecisionEngine> {
-    match llm_config {
+    let engine: Box<dyn DecisionEngine> = match llm_config {
         Some(config) => {
             tracing::info!(
-                "Using LLM decision engine: {} @ {}",
-                config.model,
-                config.base_url
+                "Decision engine: {} @ {} (model: {})",
+                "LLM",
+                config.base_url,
+                config.model
             );
             Box::new(LlmEngine::new(config))
         }
-        None => {
-            tracing::info!("Using rule-based decision engine");
-            Box::new(RuleBasedEngine::new(None))
-        }
-    }
+        None => Box::new(RuleBasedEngine::new(None)),
+    };
+    tracing::info!("Decision engine initialized: {}", engine.name());
+    engine
 }
 
 // ============================================
